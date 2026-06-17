@@ -1,6 +1,24 @@
 [package]
 name = "tt-rc-pro"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+image = "0.25"
+imageproc = "0.25"
+ab_glyph = "0.2"
+sysinfo = "0.33"
+anyhow = "1"
+libc = "0.2"
+
+# GUI
+eframe = "0.31"
+egui = "0.31"
+
+# Configuration
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+dirs = "6"
+
+# CLI arguments
+clap = { version = "4", features = ["derive"] }
