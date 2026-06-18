@@ -161,7 +161,7 @@ visible = true
 | Sensor | Source | Notes |
 |---|---|---|
 | CPU temp | `k10temp` → label "Tctl" | AMD |
-| GPU temp | `amdgpu` → label "edge" (temp_max == 100) | AMD |
+| GPU temp | `amdgpu` → label "edge" | AMD |
 | NVMe temp | `nvme` → label "Composite" | |
 | CPU load | `sysinfo` crate | |
 | RAM usage | `sysinfo` crate | |
