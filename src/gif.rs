@@ -20,11 +20,10 @@ pub struct GifAnimation {
 impl GifAnimation {
     /// Load and decode all frames of an animated GIF.
     pub fn load(path: &str) -> Result<Self> {
-        let file =
-            File::open(path).with_context(|| format!("Cannot open GIF: {path}"))?;
+        let file = File::open(path).with_context(|| format!("Cannot open GIF: {path}"))?;
         let reader = BufReader::new(file);
-        let decoder = GifDecoder::new(reader)
-            .with_context(|| format!("Cannot decode GIF: {path}"))?;
+        let decoder =
+            GifDecoder::new(reader).with_context(|| format!("Cannot decode GIF: {path}"))?;
 
         let mut frames = Vec::new();
         let mut delays_ms = Vec::new();
@@ -32,18 +31,18 @@ impl GifAnimation {
         let mut original_height = 0u32;
 
         for frame_result in decoder.into_frames() {
-            let frame = frame_result
-                .with_context(|| format!("Error decoding GIF frame in: {path}"))?;
+            let frame =
+                frame_result.with_context(|| format!("Error decoding GIF frame in: {path}"))?;
 
             let delay = frame.delay();
-            // Delay::numer_denom_ms() returns (numerator, denominator) in ms
+            // Delay::numer_denom_ms() returns (numerator, denominator) in ms.
             let (numer, denom) = delay.numer_denom_ms();
             let delay_ms = if denom > 0 {
                 (numer as u64) / (denom as u64)
             } else {
                 100 // fallback: 100ms
             };
-            delays_ms.push(delay_ms.max(10)); // minimum 10ms to avoid 0-delay frames
+            delays_ms.push(delay_ms.max(10)); // Minimum 10ms to avoid 0-delay frames.
 
             let buffer = frame.buffer().clone();
             if frames.is_empty() {

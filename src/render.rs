@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ab_glyph::{Font as AbFont, FontArc, PxScale, ScaleFont};
 use image::imageops;
 use image::ImageEncoder;
-use image::{Rgb, RgbaImage, RgbImage};
+use image::{Rgb, RgbImage, RgbaImage};
 use imageproc::drawing::{
     draw_filled_rect_mut, draw_hollow_rect_mut, draw_line_segment_mut, draw_text_mut,
 };
@@ -13,8 +13,6 @@ use crate::config::{BarId, Config, DragTarget, ElementConfig, ElementId};
 use crate::gif::GifAnimation;
 use crate::sensor::SensorData;
 use crate::{H, W};
-
-// ── Font cache ─────────────────────────────────────────────────────────────────
 
 /// Caches loaded fonts by path so they are not re-read from disk every frame.
 pub struct FontCache {
@@ -66,8 +64,6 @@ pub fn load_font(path: &str) -> Font {
     FontArc::try_from_vec(data).unwrap_or_else(|e| panic!("Invalid font {path}: {e}"))
 }
 
-// ── Color helpers ──────────────────────────────────────────────────────────────
-
 /// Dynamic temperature color: green → yellow → red based on thresholds.
 pub fn temp_color(temp: Option<f32>, warn: f32, crit: f32) -> Rgb<u8> {
     match temp {
@@ -89,19 +85,25 @@ fn draw_bar(
     bg_color: Rgb<u8>,
     border_color: Rgb<u8>,
 ) {
-    // Background
+    // Background.
     draw_filled_rect_mut(img, Rect::at(x, y).of_size(w, h), bg_color);
-    // Fill
+    // Fill.
     let fw = (w as f32 * pct.min(100.0) / 100.0) as u32;
     if fw > 0 {
         draw_filled_rect_mut(img, Rect::at(x, y).of_size(fw, h), fill_color);
     }
-    // Outline
+    // Outline.
     draw_hollow_rect_mut(img, Rect::at(x, y).of_size(w, h), border_color);
 }
 
 /// Resolve the effective color for a text element.
-fn elem_color(elem: &ElementConfig, id: ElementId, data_temp: Option<f32>, warn: f32, crit: f32) -> Rgb<u8> {
+fn elem_color(
+    elem: &ElementConfig,
+    id: ElementId,
+    data_temp: Option<f32>,
+    warn: f32,
+    crit: f32,
+) -> Rgb<u8> {
     if elem.use_dynamic_color && id.supports_dynamic_color() {
         temp_color(data_temp, warn, crit)
     } else {
@@ -109,8 +111,8 @@ fn elem_color(elem: &ElementConfig, id: ElementId, data_temp: Option<f32>, warn:
     }
 }
 
-// ── GIF compositing ───────────────────────────────────────────────────────────
-
+/// GIF compositing.
+///
 /// Alpha-blend an RGBA overlay onto an RGB base image.
 /// Only touches pixels within the overlay region.
 fn blend_rgba_on_rgb(base: &mut RgbImage, overlay: &RgbaImage, ox: i32, oy: i32) {
@@ -122,7 +124,7 @@ fn blend_rgba_on_rgb(base: &mut RgbImage, overlay: &RgbaImage, ox: i32, oy: i32)
         }
         let alpha = pixel[3] as f32 / 255.0;
         if alpha == 0.0 {
-            continue; // fully transparent
+            continue; // Fully transparent.
         }
         let bp = base.get_pixel(bx as u32, by as u32);
         let blended = Rgb([
@@ -138,7 +140,7 @@ fn blend_rgba_on_rgb(base: &mut RgbImage, overlay: &RgbaImage, ox: i32, oy: i32)
 fn render_gif_overlay(img: &mut RgbImage, config: &Config, gif: &GifAnimation) {
     let frame = gif.current_frame();
 
-    // Determine target size: use config values, or original GIF size if 0
+    // Determine target size: use config values, or original GIF size if 0.
     let target_w = if config.gif.width > 0 {
         config.gif.width
     } else {
@@ -150,7 +152,7 @@ fn render_gif_overlay(img: &mut RgbImage, config: &Config, gif: &GifAnimation) {
         gif.original_height
     };
 
-    // Scale the frame if needed
+    // Scale the frame if needed.
     let scaled = if frame.width() != target_w || frame.height() != target_h {
         imageops::resize(frame, target_w, target_h, imageops::FilterType::Triangle)
     } else {
@@ -169,7 +171,7 @@ pub fn render_frame(
 ) -> RgbImage {
     let mut img = RgbImage::from_pixel(W, H, Rgb(config.background_color));
 
-    // ── Divider ───────────────────────────────────────────────────────────────
+    // Divider.
     let d = &config.divider;
     if d.visible {
         draw_line_segment_mut(
@@ -180,7 +182,7 @@ pub fn render_frame(
         );
     }
 
-    // ── Left panel: CPU ───────────────────────────────────────────────────────
+    // Left panel: CPU.
     if let Some(e) = config.elements.get(&ElementId::CpuTempLabel) {
         if e.visible {
             let font = fonts.get_font(config, e);
@@ -278,7 +280,7 @@ pub fn render_frame(
         }
     }
 
-    // ── Right panel: GPU + NVMe + time ────────────────────────────────────────
+    // Right panel: GPU + NVMe + time.
     if let Some(e) = config.elements.get(&ElementId::GpuTempLabel) {
         if e.visible {
             let font = fonts.get_font(config, e);
@@ -333,7 +335,7 @@ pub fn render_frame(
         }
     }
 
-    // ── Time & Date ───────────────────────────────────────────────────────────
+    // Time & Date.
     let now = local_time();
 
     if let Some(e) = config.elements.get(&ElementId::Time) {
@@ -358,7 +360,7 @@ pub fn render_frame(
         }
     }
 
-    // ── GIF overlay (rendered last, on top of everything) ──────────────────────
+    // GIF overlay (rendered last, on top of everything).
     if config.gif.visible {
         if let Some(gif) = gif {
             render_gif_overlay(&mut img, config, gif);
@@ -414,8 +416,8 @@ pub fn make_frame(
     encode_jpeg(&img, config.jpeg_quality)
 }
 
-// ── Bounding boxes for hit testing ─────────────────────────────────────────────
-
+/// Bounding boxes for hit testing.
+///
 /// Compute bounding boxes for all visible elements, used for drag-and-drop hit testing.
 /// Returns a list of (DragTarget, (x, y, width, height)).
 pub fn compute_bounding_boxes(
@@ -425,23 +427,24 @@ pub fn compute_bounding_boxes(
 ) -> Vec<(DragTarget, (i32, i32, u32, u32))> {
     let mut boxes = Vec::new();
 
-    // Helper: compute text bounding box
-    let text_bbox = |font: &FontArc, font_size: f32, text: &str, x: i32, y: i32| -> (i32, i32, u32, u32) {
-        let scale = PxScale {
-            x: font_size,
-            y: font_size,
+    // Helper: compute text bounding box.
+    let text_bbox =
+        |font: &FontArc, font_size: f32, text: &str, x: i32, y: i32| -> (i32, i32, u32, u32) {
+            let scale = PxScale {
+                x: font_size,
+                y: font_size,
+            };
+            let scaled = font.as_scaled(scale);
+            let width: f32 = text
+                .chars()
+                .map(|c| scaled.h_advance(scaled.glyph_id(c)))
+                .sum();
+            (x, y, width.ceil() as u32, font_size.ceil() as u32)
         };
-        let scaled = font.as_scaled(scale);
-        let width: f32 = text
-            .chars()
-            .map(|c| scaled.h_advance(scaled.glyph_id(c)))
-            .sum();
-        (x, y, width.ceil() as u32, font_size.ceil() as u32)
-    };
 
     let now = local_time();
 
-    // Pre-format all dynamic text strings to avoid lifetime issues
+    // Pre-format all dynamic text strings to avoid lifetime issues.
     let cpu_temp_str = match data.cpu_temp {
         Some(t) => format!("{t:.1}\u{00b0}"),
         None => "N/A".into(),
@@ -457,7 +460,7 @@ pub fn compute_bounding_boxes(
         None => "N/A".into(),
     };
 
-    // Text elements with borrowed strings
+    // Text elements with borrowed strings.
     let text_items: Vec<(ElementId, &str)> = vec![
         (ElementId::CpuTempLabel, "CPU TEMP"),
         (ElementId::CpuTempValue, &cpu_temp_str),
@@ -481,19 +484,16 @@ pub fn compute_bounding_boxes(
         }
     }
 
-    // Bar elements
+    // Bar elements.
     for id in BarId::all() {
         if let Some(b) = config.bars.get(id) {
             if b.visible {
-                boxes.push((
-                    DragTarget::Bar(*id),
-                    (b.x, b.y, b.width, b.height),
-                ));
+                boxes.push((DragTarget::Bar(*id), (b.x, b.y, b.width, b.height)));
             }
         }
     }
 
-    // Divider
+    // Divider.
     if config.divider.visible {
         let d = &config.divider;
         boxes.push((
@@ -502,7 +502,7 @@ pub fn compute_bounding_boxes(
         ));
     }
 
-    // GIF
+    // GIF.
     if config.gif.visible && config.gif.path.is_some() {
         let g = &config.gif;
         let w = if g.width > 0 { g.width } else { 32 }; // fallback if no GIF loaded yet

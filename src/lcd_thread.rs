@@ -46,36 +46,42 @@ pub fn spawn(
         let mut device: Option<hid::HidDevice> = None;
         let mut first_frame = true;
 
-        // Initialize font cache and GIF from current config
+        // Initialize font cache and GIF from current config.
         let cfg = config.read().unwrap().clone();
         let mut font_cache = FontCache::new(&cfg);
-        let mut gif = cfg.gif.path.as_deref().and_then(|p| GifAnimation::load(p).ok());
+        let mut gif = cfg
+            .gif
+            .path
+            .as_deref()
+            .and_then(|p| GifAnimation::load(p).ok());
         let mut last_gif_path = cfg.gif.path.clone();
 
         while !shutdown.load(std::sync::atomic::Ordering::Relaxed) {
-            // Read sensors
+            // Read sensors.
             sys.refresh_cpu_usage();
             sys.refresh_memory();
             let sensor_data = sensor::read_sensors(&mut sys);
 
-            // Update shared state for GUI preview
+            // Update shared state for GUI preview.
             {
                 let mut state = lcd_state.write().unwrap();
                 state.last_sensor_data = sensor_data.clone();
             }
 
-            // Check if GIF path changed
+            // Check if GIF path changed.
             {
                 let cfg = config.read().unwrap();
                 let current_path = cfg.gif.path.clone();
                 if current_path != last_gif_path {
-                    gif = current_path.as_deref().and_then(|p| GifAnimation::load(p).ok());
+                    gif = current_path
+                        .as_deref()
+                        .and_then(|p| GifAnimation::load(p).ok());
                     last_gif_path = current_path;
                 }
             }
 
             if no_send {
-                // Preview-only mode, just wait
+                // Preview-only mode, just wait.
                 let interval = {
                     let cfg = config.read().unwrap();
                     cfg.update_interval_secs
@@ -84,13 +90,13 @@ pub fn spawn(
                 continue;
             }
 
-            // Render JPEG
+            // Render JPEG.
             let jpeg = {
                 let cfg = config.read().unwrap();
                 render::make_frame(&sensor_data, &cfg, &mut font_cache, gif.as_ref())
             };
 
-            // Send to LCD
+            // Send to LCD.
             if let Some(ref path) = hidraw_path {
                 let result = send_to_device(&mut device, &mut first_frame, &jpeg, path);
                 match result {
@@ -121,7 +127,7 @@ pub fn spawn(
                 }
             }
 
-            // Wait for next update
+            // Wait for next update.
             let interval = {
                 let cfg = config.read().unwrap();
                 cfg.update_interval_secs
@@ -139,7 +145,7 @@ fn send_to_device(
     jpeg: &[u8],
     hidraw_path: &str,
 ) -> anyhow::Result<()> {
-    // Open device if not already open
+    // Open device if not already open.
     if device.is_none() {
         if !std::path::Path::new(hidraw_path).exists() {
             return Err(anyhow::anyhow!("{hidraw_path} not found"));
@@ -153,7 +159,6 @@ fn send_to_device(
         dev.init_display()?;
         dev.send_chunks(jpeg)?;
         *first_frame = false;
-        println!("OK");
     } else {
         dev.begin_next_frame()?;
         dev.send_chunks(jpeg)?;

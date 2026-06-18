@@ -9,7 +9,7 @@ use anyhow::{anyhow, Result};
 
 use crate::CHUNK;
 
-// ── HID ioctl numbers (linux/hidraw.h) ────────────────────────────────────────
+//  HID ioctl numbers (linux/hidraw.h)
 // _IOC(_IOC_WRITE|_IOC_READ, 'H', nr, size) → direction bits = 3
 fn hid_iocsfeature(n: usize) -> u64 {
     (3u64 << 30) | ((n as u64) << 16) | (0x48u64 << 8) | 0x06
@@ -21,7 +21,7 @@ fn hid_iocgfeature(n: usize) -> u64 {
 
 const USBDEVFS_RESET: u64 = (0u64) | (0u64) | ('U' as u64) << 8 | 20;
 
-// ── Feature Report payloads (64 bytes each, report ID 0x03) ──────────────────
+// Feature Report payloads (64 bytes each, report ID 0x03).
 const CMD_18: [u8; 64] = {
     let mut buf = [0u8; 64];
     buf[0] = 0x03;
@@ -85,8 +85,7 @@ const CMD_1D: [u8; 64] = {
     buf
 };
 
-// ── Device discovery ──────────────────────────────────────────────────────────
-
+/// Device discovery.
 /// Find /dev/hidraw* path for the given USB VID:PID.
 pub fn find_hidraw(vendor: u16, product: u16) -> Option<String> {
     let pattern = format!("{vendor:08X}:{product:08X}");
@@ -129,10 +128,7 @@ pub fn find_usb_addr(vendor: u16, product: u16) -> Option<(u32, u32)> {
 /// Send USBDEVFS_RESET to recover a NAK-stuck endpoint.
 pub fn usb_reset(bus: u32, dev: u32) -> bool {
     let path = format!("/dev/bus/usb/{bus:03}/{dev:03}");
-    match fs::OpenOptions::new()
-        .write(true)
-        .open(&path)
-    {
+    match fs::OpenOptions::new().write(true).open(&path) {
         Ok(file) => {
             let ret = unsafe { libc::ioctl(file.as_raw_fd(), USBDEVFS_RESET as _, 0) };
             if ret < 0 {
@@ -150,8 +146,7 @@ pub fn usb_reset(bus: u32, dev: u32) -> bool {
     }
 }
 
-// ── HID device wrapper ────────────────────────────────────────────────────────
-
+/// HID device wrapper.
 pub struct HidDevice {
     file: std::fs::File,
 }
@@ -208,8 +203,10 @@ impl HidDevice {
         std::io::stdout().flush()?;
 
         match self.get_feature(0x07) {
-            Ok(r) => print!("rpt07={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ",
-                r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12]),
+            Ok(r) => print!(
+                "rpt07={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ",
+                r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12]
+            ),
             Err(e) => print!("(rpt07:{e}) "),
         }
         std::io::stdout().flush()?;

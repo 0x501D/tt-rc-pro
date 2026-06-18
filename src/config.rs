@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-// ── Element identifiers ────────────────────────────────────────────────────────
-
+/// Element identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum ElementId {
     CpuTempLabel,
@@ -62,8 +61,7 @@ impl ElementId {
     }
 }
 
-// ── Bar identifiers ────────────────────────────────────────────────────────────
-
+/// Bar identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum BarId {
     CpuLoad,
@@ -83,8 +81,7 @@ impl BarId {
     }
 }
 
-// ── Font weight ────────────────────────────────────────────────────────────────
-
+/// Font weight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum FontWeight {
     Bold,
@@ -97,8 +94,7 @@ impl Default for FontWeight {
     }
 }
 
-// ── Drag target (unified identifier for hit testing) ───────────────────────────
-
+/// Drag target (unified identifier for hit testing).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DragTarget {
     Element(ElementId),
@@ -107,8 +103,7 @@ pub enum DragTarget {
     Gif,
 }
 
-// ── Element configuration ──────────────────────────────────────────────────────
-
+/// Element configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ElementConfig {
     pub visible: bool,
@@ -131,8 +126,7 @@ fn default_font_size() -> f32 {
     16.0
 }
 
-// ── Bar configuration ──────────────────────────────────────────────────────────
-
+/// Bar configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BarConfig {
     pub visible: bool,
@@ -145,8 +139,7 @@ pub struct BarConfig {
     pub border_color: [u8; 3],
 }
 
-// ── Divider configuration ──────────────────────────────────────────────────────
-
+/// Divider configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DividerConfig {
     pub visible: bool,
@@ -156,8 +149,7 @@ pub struct DividerConfig {
     pub color: [u8; 3],
 }
 
-// ── GIF configuration ─────────────────────────────────────────────────────────
-
+/// GIF configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GifConfig {
     pub visible: bool,
@@ -185,8 +177,7 @@ fn default_gif() -> GifConfig {
     }
 }
 
-// ── Top-level configuration ────────────────────────────────────────────────────
-
+/// Top-level configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     #[serde(default = "default_elements")]
@@ -227,7 +218,7 @@ fn default_bg_color() -> [u8; 3] {
 
 fn default_elements() -> HashMap<ElementId, ElementConfig> {
     let mut m = HashMap::new();
-    // Left panel: CPU
+    // Left panel: CPU.
     m.insert(
         ElementId::CpuTempLabel,
         ElementConfig {
@@ -280,7 +271,7 @@ fn default_elements() -> HashMap<ElementId, ElementConfig> {
             use_dynamic_color: false,
         },
     );
-    // Right panel: GPU + NVMe + Time
+    // Right panel: GPU + NVMe + Time.
     m.insert(
         ElementId::GpuTempLabel,
         ElementConfig {

@@ -9,8 +9,7 @@ use crate::lcd_thread::LcdState;
 use crate::render::{self, FontCache};
 use crate::{H, W};
 
-// ── App state ──────────────────────────────────────────────────────────────────
-
+/// App state.
 pub struct TtRcApp {
     config: Arc<RwLock<Config>>,
     lcd_state: Arc<RwLock<LcdState>>,
@@ -39,7 +38,7 @@ impl TtRcApp {
         let cfg = config.read().unwrap().clone();
         let font_cache = FontCache::new(&cfg);
 
-        // Try to load GIF if path is set
+        // Try to load GIF if path is set.
         let gif = cfg
             .gif
             .path
@@ -81,23 +80,26 @@ impl TtRcApp {
         let sensor_data = self.lcd_state.read().unwrap().last_sensor_data.clone();
         let config = self.config_clone();
 
-        let img = render::render_frame(&sensor_data, &config, &mut self.font_cache, self.gif.as_ref());
+        let img = render::render_frame(
+            &sensor_data,
+            &config,
+            &mut self.font_cache,
+            self.gif.as_ref(),
+        );
 
-        // Convert RgbImage to egui ColorImage
+        // Convert RgbImage to egui ColorImage.
         let raw = img.as_raw();
         let pixels: Vec<u8> = raw
             .chunks(3)
             .flat_map(|rgb| [rgb[0], rgb[1], rgb[2], 255])
             .collect();
-        let color_image =
-            ColorImage::from_rgba_unmultiplied([W as usize, H as usize], &pixels);
+        let color_image = ColorImage::from_rgba_unmultiplied([W as usize, H as usize], &pixels);
 
         if let Some(ref mut texture) = self.preview_texture {
             texture.set(color_image, TextureOptions::LINEAR);
         } else {
-            self.preview_texture = Some(
-                ctx.load_texture("preview", color_image, TextureOptions::LINEAR),
-            );
+            self.preview_texture =
+                Some(ctx.load_texture("preview", color_image, TextureOptions::LINEAR));
         }
         self.preview_texture.as_ref().unwrap()
     }
@@ -136,10 +138,7 @@ impl TtRcApp {
         bboxes: &[(DragTarget, (i32, i32, u32, u32))],
     ) -> Option<DragTarget> {
         for (target, (bx, by, bw, bh)) in bboxes.iter().rev() {
-            if img_x >= *bx
-                && img_x < *bx + *bw as i32
-                && img_y >= *by
-                && img_y < *by + *bh as i32
+            if img_x >= *bx && img_x < *bx + *bw as i32 && img_y >= *by && img_y < *by + *bh as i32
             {
                 return Some(*target);
             }
@@ -151,19 +150,28 @@ impl TtRcApp {
     fn compute_bboxes(&mut self) -> Vec<(DragTarget, (i32, i32, u32, u32))> {
         let sensor_data = self.lcd_state.read().unwrap().last_sensor_data.clone();
         let config = self.config_clone();
-        let mut bboxes = render::compute_bounding_boxes(&sensor_data, &config, &mut self.font_cache);
+        let mut bboxes =
+            render::compute_bounding_boxes(&sensor_data, &config, &mut self.font_cache);
 
-        // Override GIF bbox with actual dimensions from loaded GIF
+        // Override GIF bbox with actual dimensions from loaded GIF.
         if config.gif.visible && config.gif.path.is_some() {
-            // Remove the placeholder GIF bbox
+            // Remove the placeholder GIF bbox.
             bboxes.retain(|(t, _)| !matches!(t, DragTarget::Gif));
-            // Add accurate bbox
+            // Add accurate bbox.
             let (w, h) = if let Some(ref gif) = self.gif {
-                let gw = if config.gif.width > 0 { config.gif.width } else { gif.original_width };
-                let gh = if config.gif.height > 0 { config.gif.height } else { gif.original_height };
+                let gw = if config.gif.width > 0 {
+                    config.gif.width
+                } else {
+                    gif.original_width
+                };
+                let gh = if config.gif.height > 0 {
+                    config.gif.height
+                } else {
+                    gif.original_height
+                };
                 (gw, gh)
             } else {
-                (32, 32) // fallback placeholder
+                (32, 32) // fallback placeholder.
             };
             bboxes.push((DragTarget::Gif, (config.gif.x, config.gif.y, w, h)));
         }
@@ -174,10 +182,10 @@ impl TtRcApp {
 
 impl eframe::App for TtRcApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        // Check if GIF path changed
+        // Check if GIF path changed.
         self.maybe_reload_gif();
 
-        // ── Status bar (bottom) ────────────────────────────────────────────────
+        // Status bar (bottom).
         TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Thermaltake RC Pro LCD Config");
@@ -202,7 +210,7 @@ impl eframe::App for TtRcApp {
             });
         });
 
-        // ── Right panel: controls ──────────────────────────────────────────────
+        // Right panel: controls.
         SidePanel::right("controls_panel")
             .min_width(300.0)
             .default_width(320.0)
@@ -212,7 +220,7 @@ impl eframe::App for TtRcApp {
                 });
             });
 
-        // ── Top panel: zoom controls ───────────────────────────────────────────
+        // Top panel: zoom controls.
         TopBottomPanel::top("zoom_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Zoom:");
@@ -222,20 +230,28 @@ impl eframe::App for TtRcApp {
                 if ui.button("➕").on_hover_text("Zoom in").clicked() {
                     self.preview_scale = (self.preview_scale + 0.5).min(4.0);
                 }
-                if ui.button("1:1").on_hover_text("Original size (1×)").clicked() {
+                if ui
+                    .button("1:1")
+                    .on_hover_text("Original size (1×)")
+                    .clicked()
+                {
                     self.preview_scale = 1.0;
                 }
-                if ui.button("Fit").on_hover_text("Fit to available space").clicked() {
-                    // Calculate scale based on central panel size minus some padding
+                if ui
+                    .button("Fit")
+                    .on_hover_text("Fit to available space")
+                    .clicked()
+                {
+                    // Calculate scale based on central panel size minus some padding.
                     let central_size = ctx.screen_rect().size();
-                    let side_panel_width = 320.0; // approx side panel
-                    let top_bottom_height = 60.0; // approx top+bottom bars
+                    let side_panel_width = 320.0; // Approx side panel.
+                    let top_bottom_height = 60.0; // Approx top+bottom bars.
                     let avail_w = central_size.x - side_panel_width - 20.0;
                     let avail_h = central_size.y - top_bottom_height - 40.0;
                     let scale_x = avail_w / W as f32;
                     let scale_y = avail_h / H as f32;
                     self.preview_scale = scale_x.min(scale_y).max(0.5).min(4.0);
-                    // Round to nearest 0.25 for cleaner display
+                    // Round to nearest 0.25 for cleaner display.
                     self.preview_scale = (self.preview_scale * 4.0).round() / 4.0;
                 }
                 ui.label(format!("{:.2}×", self.preview_scale));
@@ -244,103 +260,93 @@ impl eframe::App for TtRcApp {
             });
         });
 
-        // ── Central panel: live preview ────────────────────────────────────────
+        // Central panel: live preview.
         CentralPanel::default().show(ctx, |ui| {
-            // Compute bboxes before rendering (needs &mut self.font_cache)
+            // Compute bboxes before rendering (needs &mut self.font_cache).
             let bboxes = self.compute_bboxes();
 
-            // Render preview and get texture
+            // Render preview and get texture.
             let texture = self.ensure_preview_texture(ctx);
             let tex_size = texture.size_vec2();
             let scale = self.preview_scale;
             let display_size = tex_size * scale;
 
-            // Center the preview
+            // Center the preview.
             let available = ui.available_size();
             let offset_x = ((available.x - display_size.x) / 2.0).max(0.0);
             let offset_y = ((available.y - display_size.y) / 2.0).max(0.0);
 
-            ui.allocate_ui_with_layout(
-                available,
-                Layout::left_to_right(Align::Center),
-                |ui| {
-                    ui.allocate_space(Vec2::new(offset_x, 0.0));
-                    ui.vertical_centered(|ui| {
-                        ui.allocate_space(Vec2::new(0.0, offset_y));
+            ui.allocate_ui_with_layout(available, Layout::left_to_right(Align::Center), |ui| {
+                ui.allocate_space(Vec2::new(offset_x, 0.0));
+                ui.vertical_centered(|ui| {
+                    ui.allocate_space(Vec2::new(0.0, offset_y));
 
-                        let (rect, response) =
-                            ui.allocate_exact_size(display_size, Sense::click_and_drag());
+                    let (rect, response) =
+                        ui.allocate_exact_size(display_size, Sense::click_and_drag());
 
-                        // Draw the preview image
-                        let tex = self.preview_texture.as_ref().unwrap();
-                        ui.put(
-                            rect,
-                            Image::new(tex).fit_to_exact_size(display_size),
-                        );
+                    // Draw the preview image.
+                    let tex = self.preview_texture.as_ref().unwrap();
+                    ui.put(rect, Image::new(tex).fit_to_exact_size(display_size));
 
-                        // Draw selection highlight
-                        let painter = ui.painter_at(rect);
-                        self.draw_selection_highlight(&painter, rect, &bboxes);
+                    // Draw selection highlight.
+                    let painter = ui.painter_at(rect);
+                    self.draw_selection_highlight(&painter, rect, &bboxes);
 
-                        // ── Drag & drop handling ────────────────────────────────
-                        if response.drag_started() {
+                    // Drag & drop handling.
+                    if response.drag_started() {
+                        if let Some(pos) = response.interact_pointer_pos() {
+                            let img_x = ((pos.x - rect.min.x) / scale) as i32;
+                            let img_y = ((pos.y - rect.min.y) / scale) as i32;
+                            if let Some(target) = self.hit_test(img_x, img_y, &bboxes) {
+                                self.selected = Some(target);
+                                let config = self.config_clone();
+                                let start_pos = config.get_pos(&target);
+                                self.drag_state = Some(DragState {
+                                    target,
+                                    start_mouse_img: (img_x as f32, img_y as f32),
+                                    start_pos,
+                                });
+                            }
+                        }
+                    }
+
+                    if response.dragged() {
+                        if let Some(ref drag) = self.drag_state {
                             if let Some(pos) = response.interact_pointer_pos() {
-                                let img_x = ((pos.x - rect.min.x) / scale) as i32;
-                                let img_y = ((pos.y - rect.min.y) / scale) as i32;
-                                if let Some(target) = self.hit_test(img_x, img_y, &bboxes) {
-                                    self.selected = Some(target);
-                                    let config = self.config_clone();
-                                    let start_pos = config.get_pos(&target);
-                                    self.drag_state = Some(DragState {
-                                        target,
-                                        start_mouse_img: (img_x as f32, img_y as f32),
-                                        start_pos,
-                                    });
-                                }
+                                let img_x = (pos.x - rect.min.x) / scale;
+                                let img_y = (pos.y - rect.min.y) / scale;
+                                let dx = img_x as i32 - drag.start_mouse_img.0 as i32;
+                                let dy = img_y as i32 - drag.start_mouse_img.1 as i32;
+                                let new_x = (drag.start_pos.0 + dx).clamp(0, W as i32 - 1);
+                                let new_y = (drag.start_pos.1 + dy).clamp(0, H as i32 - 1);
+                                let mut cfg = self.config.write().unwrap();
+                                cfg.set_pos(&drag.target, new_x, new_y);
                             }
                         }
+                    }
 
-                        if response.dragged() {
-                            if let Some(ref drag) = self.drag_state {
-                                if let Some(pos) = response.interact_pointer_pos() {
-                                    let img_x = (pos.x - rect.min.x) / scale;
-                                    let img_y = (pos.y - rect.min.y) / scale;
-                                    let dx = img_x as i32 - drag.start_mouse_img.0 as i32;
-                                    let dy = img_y as i32 - drag.start_mouse_img.1 as i32;
-                                    let new_x =
-                                        (drag.start_pos.0 + dx).clamp(0, W as i32 - 1);
-                                    let new_y =
-                                        (drag.start_pos.1 + dy).clamp(0, H as i32 - 1);
-                                    let mut cfg = self.config.write().unwrap();
-                                    cfg.set_pos(&drag.target, new_x, new_y);
-                                }
-                            }
+                    if response.drag_stopped() {
+                        self.drag_state = None;
+                    }
+
+                    // Click without drag = select only.
+                    if response.clicked() && self.drag_state.is_none() {
+                        if let Some(pos) = response.interact_pointer_pos() {
+                            let img_x = ((pos.x - rect.min.x) / scale) as i32;
+                            let img_y = ((pos.y - rect.min.y) / scale) as i32;
+                            self.selected = self.hit_test(img_x, img_y, &bboxes);
                         }
-
-                        if response.drag_stopped() {
-                            self.drag_state = None;
-                        }
-
-                        // Click without drag = select only
-                        if response.clicked() && self.drag_state.is_none() {
-                            if let Some(pos) = response.interact_pointer_pos() {
-                                let img_x = ((pos.x - rect.min.x) / scale) as i32;
-                                let img_y = ((pos.y - rect.min.y) / scale) as i32;
-                                self.selected = self.hit_test(img_x, img_y, &bboxes);
-                            }
-                        }
-                    });
-                },
-            );
-
+                    }
+                });
+            });
         });
 
-        // Repaint continuously for live preview
+        // Repaint continuously for live preview.
         ctx.request_repaint();
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // Auto-save config on exit
+        // Auto-save config on exit.
         let cfg = self.config.read().unwrap();
         if let Err(e) = cfg.save() {
             eprintln!("Failed to save config on exit: {e}");
@@ -348,14 +354,13 @@ impl eframe::App for TtRcApp {
     }
 }
 
-// ── Controls panel drawing ─────────────────────────────────────────────────────
-
+// Controls panel drawing.
 impl TtRcApp {
     fn draw_controls(&mut self, ui: &mut Ui) {
         ui.heading("Elements");
         ui.separator();
 
-        // ── Element list with visibility toggles ───────────────────────────────
+        // Element list with visibility toggles.
         for id in ElementId::all() {
             let mut cfg = self.config.write().unwrap();
             let elem = cfg.element_mut(*id);
@@ -374,7 +379,7 @@ impl TtRcApp {
             }
         }
 
-        // ── Bar list ───────────────────────────────────────────────────────────
+        // Bar list.
         for id in BarId::all() {
             let mut cfg = self.config.write().unwrap();
             let bar = cfg.bar_mut(*id);
@@ -393,7 +398,7 @@ impl TtRcApp {
             }
         }
 
-        // ── Divider ────────────────────────────────────────────────────────────
+        // Divider.
         {
             let mut cfg = self.config.write().unwrap();
             let mut visible = cfg.divider.visible;
@@ -408,7 +413,7 @@ impl TtRcApp {
             }
         }
 
-        // ── GIF ────────────────────────────────────────────────────────────────
+        // GIF.
         {
             let mut cfg = self.config.write().unwrap();
             let mut visible = cfg.gif.visible;
@@ -425,17 +430,17 @@ impl TtRcApp {
 
         ui.separator();
 
-        // ── Selected element detail ────────────────────────────────────────────
+        // Selected element detail.
         self.draw_selected_detail(ui);
 
         ui.separator();
 
-        // ── Global settings ────────────────────────────────────────────────────
+        // Global settings.
         self.draw_global_settings(ui);
 
         ui.separator();
 
-        // ── Action buttons ─────────────────────────────────────────────────────
+        // Action buttons.
         ui.horizontal(|ui| {
             if ui.button("💾 Save Config").clicked() {
                 let cfg = self.config.read().unwrap();
@@ -485,23 +490,15 @@ impl TtRcApp {
         let mut cfg = self.config.write().unwrap();
         let elem = cfg.element_mut(id);
 
-        // Position
+        // Position.
         ui.horizontal(|ui| {
             ui.label("X:");
-            ui.add(
-                DragValue::new(&mut elem.x)
-                    .range(0..=W as i32 - 1)
-                    .speed(1),
-            );
+            ui.add(DragValue::new(&mut elem.x).range(0..=W as i32 - 1).speed(1));
             ui.label("Y:");
-            ui.add(
-                DragValue::new(&mut elem.y)
-                    .range(0..=H as i32 - 1)
-                    .speed(1),
-            );
+            ui.add(DragValue::new(&mut elem.y).range(0..=H as i32 - 1).speed(1));
         });
 
-        // Font size
+        // Font size.
         ui.horizontal(|ui| {
             ui.label("Font Size:");
             ui.add(
@@ -511,7 +508,7 @@ impl TtRcApp {
             );
         });
 
-        // Font weight
+        // Font weight.
         ui.horizontal(|ui| {
             ui.label("Font Weight:");
             let mut is_bold = elem.font_weight == FontWeight::Bold;
@@ -524,7 +521,7 @@ impl TtRcApp {
             };
         });
 
-        // Custom font path
+        // Custom font path.
         ui.horizontal(|ui| {
             ui.label("Font:");
             let mut path_str = elem.font_path.clone().unwrap_or_default();
@@ -542,7 +539,7 @@ impl TtRcApp {
             }
         });
 
-        // Color
+        // Color.
         ui.horizontal(|ui| {
             ui.label("Color:");
             let mut color32 = color8_to_color32(elem.color);
@@ -551,7 +548,7 @@ impl TtRcApp {
             }
         });
 
-        // Dynamic color (for temperature elements)
+        // Dynamic color (for temperature elements).
         if id.supports_dynamic_color() {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut elem.use_dynamic_color, "Dynamic color (temp-based)");
@@ -568,35 +565,23 @@ impl TtRcApp {
         let mut cfg = self.config.write().unwrap();
         let bar = cfg.bar_mut(id);
 
-        // Position
+        // Position.
         ui.horizontal(|ui| {
             ui.label("X:");
-            ui.add(
-                DragValue::new(&mut bar.x)
-                    .range(0..=W as i32 - 1)
-                    .speed(1),
-            );
+            ui.add(DragValue::new(&mut bar.x).range(0..=W as i32 - 1).speed(1));
             ui.label("Y:");
-            ui.add(
-                DragValue::new(&mut bar.y)
-                    .range(0..=H as i32 - 1)
-                    .speed(1),
-            );
+            ui.add(DragValue::new(&mut bar.y).range(0..=H as i32 - 1).speed(1));
         });
 
-        // Dimensions
+        // Dimensions.
         ui.horizontal(|ui| {
             ui.label("Width:");
             ui.add(DragValue::new(&mut bar.width).range(4..=W).speed(1));
             ui.label("Height:");
-            ui.add(
-                DragValue::new(&mut bar.height)
-                    .range(2..=40)
-                    .speed(1),
-            );
+            ui.add(DragValue::new(&mut bar.height).range(2..=40).speed(1));
         });
 
-        // Colors
+        // Colors.
         ui.horizontal(|ui| {
             ui.label("Fill:");
             let mut c = color8_to_color32(bar.fill_color);
@@ -625,7 +610,7 @@ impl TtRcApp {
 
         let mut cfg = self.config.write().unwrap();
 
-        // Position
+        // Position.
         ui.horizontal(|ui| {
             ui.label("X:");
             ui.add(
@@ -635,7 +620,7 @@ impl TtRcApp {
             );
         });
 
-        // Y range
+        // Y range.
         ui.horizontal(|ui| {
             ui.label("Y Start:");
             ui.add(
@@ -651,7 +636,7 @@ impl TtRcApp {
             );
         });
 
-        // Color
+        // Color.
         ui.horizontal(|ui| {
             ui.label("Color:");
             let mut c = color8_to_color32(cfg.divider.color);
@@ -666,7 +651,7 @@ impl TtRcApp {
 
         let mut cfg = self.config.write().unwrap();
 
-        // GIF file path
+        // GIF file path.
         ui.horizontal(|ui| {
             ui.label("File:");
             let mut path_str = cfg.gif.path.clone().unwrap_or_default();
@@ -684,7 +669,7 @@ impl TtRcApp {
             }
         });
 
-        // GIF status
+        // GIF status.
         if let Some(ref gif) = self.gif {
             ui.label(format!(
                 "Loaded: {} frames, {}×{}",
@@ -698,7 +683,7 @@ impl TtRcApp {
             ui.label("No GIF selected");
         }
 
-        // Position
+        // Position.
         ui.horizontal(|ui| {
             ui.label("X:");
             ui.add(
@@ -714,20 +699,12 @@ impl TtRcApp {
             );
         });
 
-        // Size (0 = original)
+        // Size (0 = original).
         ui.horizontal(|ui| {
             ui.label("Width:");
-            ui.add(
-                DragValue::new(&mut cfg.gif.width)
-                    .range(0..=W)
-                    .speed(1),
-            );
+            ui.add(DragValue::new(&mut cfg.gif.width).range(0..=W).speed(1));
             ui.label("Height:");
-            ui.add(
-                DragValue::new(&mut cfg.gif.height)
-                    .range(0..=H)
-                    .speed(1),
-            );
+            ui.add(DragValue::new(&mut cfg.gif.height).range(0..=H).speed(1));
         });
         ui.horizontal(|ui| {
             if ui.button("Original Size").clicked() {
@@ -743,7 +720,7 @@ impl TtRcApp {
 
         let mut cfg = self.config.write().unwrap();
 
-        // Background color
+        // Background color.
         ui.horizontal(|ui| {
             ui.label("Background:");
             let mut c = color8_to_color32(cfg.background_color);
@@ -752,30 +729,28 @@ impl TtRcApp {
             }
         });
 
-        // Default fonts
+        // Default fonts.
         ui.horizontal(|ui| {
             ui.label("Bold Font:");
-            let response = ui.add(
-                TextEdit::singleline(&mut cfg.default_font_bold)
-                    .desired_width(200.0),
-            );
+            let response =
+                ui.add(TextEdit::singleline(&mut cfg.default_font_bold).desired_width(200.0));
             if response.changed() {
-                self.font_cache.reload_defaults(&*self.config.read().unwrap());
+                self.font_cache
+                    .reload_defaults(&*self.config.read().unwrap());
             }
         });
 
         ui.horizontal(|ui| {
             ui.label("Regular Font:");
-            let response = ui.add(
-                TextEdit::singleline(&mut cfg.default_font_regular)
-                    .desired_width(200.0),
-            );
+            let response =
+                ui.add(TextEdit::singleline(&mut cfg.default_font_regular).desired_width(200.0));
             if response.changed() {
-                self.font_cache.reload_defaults(&*self.config.read().unwrap());
+                self.font_cache
+                    .reload_defaults(&*self.config.read().unwrap());
             }
         });
 
-        // Update interval
+        // Update interval.
         ui.horizontal(|ui| {
             ui.label("Update interval (s):");
             ui.add(
@@ -785,7 +760,7 @@ impl TtRcApp {
             );
         });
 
-        // JPEG quality
+        // JPEG quality.
         ui.horizontal(|ui| {
             ui.label("JPEG quality:");
             ui.add(
@@ -796,8 +771,6 @@ impl TtRcApp {
         });
     }
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
 
 fn color8_to_color32(c: [u8; 3]) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])

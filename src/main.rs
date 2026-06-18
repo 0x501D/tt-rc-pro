@@ -16,37 +16,37 @@ mod lcd_thread;
 mod render;
 mod sensor;
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// Constants.
 const W: u32 = 480;
 const H: u32 = 128;
 const CHUNK: usize = 1016;
 const USB_VID: u16 = 0x264a;
 const USB_PID: u16 = 0x232a;
 
-// ── CLI arguments ──────────────────────────────────────────────────────────────
-
+// CLI arguments.
 #[derive(Parser, Debug)]
-#[command(name = "tt-rc-pro", about = "Thermaltake RC Pro LCD display controller")]
+#[command(
+    name = "tt-rc-pro",
+    about = "Thermaltake RC Pro LCD display controller"
+)]
 struct Args {
-    /// Launch GUI configuration mode
+    /// Launch GUI configuration mode.
     #[arg(long)]
     gui: bool,
 
-    /// Run as daemon (default when no --gui)
+    /// Run as daemon (default when no --gui).
     #[arg(long)]
     daemon: bool,
 
-    /// Don't send to LCD device (preview only in GUI mode)
+    /// Don't send to LCD device (preview only in GUI mode).
     #[arg(long)]
     no_send: bool,
 }
 
-// ── Entry point ────────────────────────────────────────────────────────────────
-
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Load or create default config
+    // Load or create default config.
     let config = config::Config::load().unwrap_or_else(|e| {
         eprintln!("Config load failed ({e}), using defaults");
         config::Config::default()
@@ -58,8 +58,6 @@ fn main() -> Result<()> {
         run_daemon(config)
     }
 }
-
-// ── GUI mode ───────────────────────────────────────────────────────────────────
 
 fn run_gui(config: config::Config, no_send: bool) -> Result<()> {
     let config = Arc::new(RwLock::new(config));
@@ -81,7 +79,7 @@ fn run_gui(config: config::Config, no_send: bool) -> Result<()> {
         eprintln!("tt-rc-pro GUI: LCD not found (preview-only mode)");
     }
 
-    // Spawn LCD sender thread
+    // Spawn LCD sender thread.
     let shutdown = Arc::new(AtomicBool::new(false));
     let _lcd_handle = lcd_thread::spawn(
         Arc::clone(&config),
@@ -91,7 +89,7 @@ fn run_gui(config: config::Config, no_send: bool) -> Result<()> {
         no_send,
     );
 
-    // Launch eframe GUI
+    // Launch eframe GUI.
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([960.0, 500.0])
@@ -114,13 +112,11 @@ fn run_gui(config: config::Config, no_send: bool) -> Result<()> {
         }),
     );
 
-    // Signal shutdown
+    // Signal shutdown.
     shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
 
     result.map_err(|e| anyhow!("eframe error: {e}"))
 }
-
-// ── Daemon mode ────────────────────────────────────────────────────────────────
 
 fn run_daemon(mut config: config::Config) -> Result<()> {
     let hidraw_path = hid::find_hidraw(USB_VID, USB_PID).ok_or_else(|| {
@@ -143,7 +139,7 @@ fn run_daemon(mut config: config::Config) -> Result<()> {
         .and_then(|p| gif::GifAnimation::load(p).ok());
     let mut last_gif_path = config.gif.path.clone();
 
-    // Warm up sysinfo CPU usage (first refresh returns 0)
+    // Warm up sysinfo CPU usage (first refresh returns 0).
     let mut sys = System::new_all();
     sys.refresh_cpu_usage();
     thread::sleep(Duration::from_millis(500));
@@ -154,13 +150,13 @@ fn run_daemon(mut config: config::Config) -> Result<()> {
     let mut last_config_mtime: Option<std::time::SystemTime> = None;
 
     loop {
-        // Hot-reload config if file changed
+        // Hot-reload config if file changed.
         let config_path = config::Config::config_path();
         if let Ok(metadata) = std::fs::metadata(&config_path) {
             let mtime = metadata.modified().ok();
             if mtime != last_config_mtime {
                 if let Ok(loaded) = config::Config::load() {
-                    // Reload GIF if path changed
+                    // Reload GIF if path changed.
                     if loaded.gif.path != last_gif_path {
                         gif = loaded
                             .gif
@@ -221,7 +217,7 @@ fn daemon_step(
     gif: Option<&gif::GifAnimation>,
     hidraw_path: &str,
 ) -> Result<()> {
-    // Open device if not already open
+    // Open device if not already open.
     if device.is_none() {
         if !std::path::Path::new(hidraw_path).exists() {
             return Err(anyhow!("{hidraw_path} not found"));
@@ -231,24 +227,23 @@ fn daemon_step(
     }
     let dev = device.as_mut().unwrap();
 
-    // Encode JPEG BEFORE any protocol commands (timing-critical after CMD_1D)
+    // Encode JPEG BEFORE any protocol commands (timing-critical after CMD_1D).
     sys.refresh_cpu_usage();
     sys.refresh_memory();
     let sensors = sensor::read_sensors(sys);
     let jpeg = render::make_frame(&sensors, config, font_cache, gif);
 
-    // Send to display
+    // Send to display.
     if *first_frame {
         dev.init_display()?;
         dev.send_chunks(&jpeg)?;
         *first_frame = false;
-        println!("OK");
     } else {
         dev.begin_next_frame()?;
         dev.send_chunks(&jpeg)?;
     }
 
-    // Status line
+    // Status line.
     print!(
         "\r  CPU {}°  GPU {}°  load {:.0}%   ",
         sensors
