@@ -17,7 +17,8 @@ Generated with GLM-5.1 based on https://github.com/pcmx1/thermaltake-lcd-linux
 
 ## Screenshots
 
-*TODO: add screenshots of the GUI and LCD output*
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/2c3e4489-6add-4162-8230-c02fe04a7153" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/4605ee7f-b45d-4306-817c-3e3e2d694c75" />
 
 ## Requirements
 
