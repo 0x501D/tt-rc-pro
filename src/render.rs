@@ -96,6 +96,52 @@ fn draw_bar(
     draw_hollow_rect_mut(img, Rect::at(x, y).of_size(w, h), border_color);
 }
 
+/// Draw a line graph within the given rectangle.
+fn draw_line_graph(
+    img: &mut RgbImage,
+    x: i32,
+    y: i32,
+    w: u32,
+    h: u32,
+    data: &[f32],
+    max_val: f32,
+    line_color: Rgb<u8>,
+    bg_color: Rgb<u8>,
+    border_color: Rgb<u8>,
+) {
+    // Background.
+    draw_filled_rect_mut(img, Rect::at(x, y).of_size(w, h), bg_color);
+
+    if data.len() >= 2 {
+        // Auto-scale Y axis if max_val is 0.
+        let effective_max = if max_val > 0.0 {
+            max_val
+        } else {
+            data.iter()
+                .cloned()
+                .fold(f32::NEG_INFINITY, f32::max)
+                .max(1.0)
+        };
+
+        let inner_w = w as f32;
+        let inner_h = h as f32;
+        let n = data.len();
+        let step = inner_w / (n - 1).max(1) as f32;
+
+        for i in 0..(n - 1) {
+            let x0 = x as f32 + i as f32 * step;
+            let x1 = x as f32 + (i + 1) as f32 * step;
+            let y0 = y as f32 + inner_h - (data[i].min(effective_max) / effective_max * inner_h);
+            let y1 =
+                y as f32 + inner_h - (data[i + 1].min(effective_max) / effective_max * inner_h);
+            draw_line_segment_mut(img, (x0, y0), (x1, y1), line_color);
+        }
+    }
+
+    // Border.
+    draw_hollow_rect_mut(img, Rect::at(x, y).of_size(w, h), border_color);
+}
+
 /// Resolve the effective color for a text element.
 fn elem_color(
     elem: &ElementConfig,
@@ -308,6 +354,109 @@ pub fn render_frame(
         }
     }
 
+    // GPU Load text.
+    if let Some(e) = config.elements.get(&ElementId::GpuLoad) {
+        if e.visible {
+            let gpu_load_str = match data.gpu_load_pct {
+                Some(pct) => format!("GPU LOAD  {:.0}%", pct),
+                None => "GPU LOAD  N/A".into(),
+            };
+            let font = fonts.get_font(config, e);
+            let scale = PxScale {
+                x: e.font_size,
+                y: e.font_size,
+            };
+            draw_text_mut(&mut img, Rgb(e.color), e.x, e.y, scale, font, &gpu_load_str);
+        }
+    }
+
+    // GPU Load bar.
+    if let Some(b) = config.bars.get(&BarId::GpuLoad) {
+        if b.visible {
+            let pct = data.gpu_load_pct.unwrap_or(0.0);
+            draw_bar(
+                &mut img,
+                b.x,
+                b.y,
+                b.width,
+                b.height,
+                pct,
+                Rgb(b.fill_color),
+                Rgb(b.bg_color),
+                Rgb(b.border_color),
+            );
+        }
+    }
+
+    // VRAM text.
+    if let Some(e) = config.elements.get(&ElementId::GpuVram) {
+        if e.visible {
+            let vram_str = if data.vram_total_gb > 0.0 {
+                format!(
+                    "VRAM  {:.1}/{:.0} GB",
+                    data.vram_used_gb, data.vram_total_gb
+                )
+            } else {
+                "VRAM  N/A".into()
+            };
+            let font = fonts.get_font(config, e);
+            let scale = PxScale {
+                x: e.font_size,
+                y: e.font_size,
+            };
+            draw_text_mut(&mut img, Rgb(e.color), e.x, e.y, scale, font, &vram_str);
+        }
+    }
+
+    // VRAM bar.
+    if let Some(b) = config.bars.get(&BarId::GpuVram) {
+        if b.visible {
+            draw_bar(
+                &mut img,
+                b.x,
+                b.y,
+                b.width,
+                b.height,
+                data.vram_pct,
+                Rgb(b.fill_color),
+                Rgb(b.bg_color),
+                Rgb(b.border_color),
+            );
+        }
+    }
+
+    // FPS text.
+    if let Some(e) = config.elements.get(&ElementId::Fps) {
+        if e.visible {
+            let fps_str = match data.fps {
+                Some(f) => format!("FPS {:.0}", f),
+                None => "FPS --".into(),
+            };
+            let font = fonts.get_font(config, e);
+            let scale = PxScale {
+                x: e.font_size,
+                y: e.font_size,
+            };
+            draw_text_mut(&mut img, Rgb(e.color), e.x, e.y, scale, font, &fps_str);
+        }
+    }
+
+    // Frametime text.
+    if let Some(e) = config.elements.get(&ElementId::Frametime) {
+        if e.visible {
+            let ft_str = match data.frametime_ms {
+                Some(ft) => format!("FT {:.1}ms", ft),
+                None => "FT --".into(),
+            };
+            let font = fonts.get_font(config, e);
+            let scale = PxScale {
+                x: e.font_size,
+                y: e.font_size,
+            };
+            draw_text_mut(&mut img, Rgb(e.color), e.x, e.y, scale, font, &ft_str);
+        }
+    }
+
     if let Some(e) = config.elements.get(&ElementId::NvmeLabel) {
         if e.visible {
             let font = fonts.get_font(config, e);
@@ -358,6 +507,23 @@ pub fn render_frame(
             };
             draw_text_mut(&mut img, Rgb(e.color), e.x, e.y, scale, font, &now.date_str);
         }
+    }
+
+    // Frametime graph.
+    let g = &config.frametime_graph;
+    if g.visible && !data.frametime_history.is_empty() {
+        draw_line_graph(
+            &mut img,
+            g.x,
+            g.y,
+            g.width,
+            g.height,
+            &data.frametime_history,
+            g.max_ms,
+            Rgb(g.line_color),
+            Rgb(g.bg_color),
+            Rgb(g.border_color),
+        );
     }
 
     // GIF overlay (rendered last, on top of everything).
@@ -455,6 +621,26 @@ pub fn compute_bounding_boxes(
         Some(t) => format!("{t:.1}\u{00b0}"),
         None => "N/A".into(),
     };
+    let gpu_load_str = match data.gpu_load_pct {
+        Some(pct) => format!("LOAD  {:.0}%", pct),
+        None => "LOAD  N/A".into(),
+    };
+    let vram_str = if data.vram_total_gb > 0.0 {
+        format!(
+            "VRAM  {:.1}/{:.0} GB",
+            data.vram_used_gb, data.vram_total_gb
+        )
+    } else {
+        "VRAM  N/A".into()
+    };
+    let fps_str = match data.fps {
+        Some(f) => format!("FPS {:.0}", f),
+        None => "FPS --".into(),
+    };
+    let ft_str = match data.frametime_ms {
+        Some(ft) => format!("FT {:.1}ms", ft),
+        None => "FT --".into(),
+    };
     let nvme_temp_str = match data.nvme_temp {
         Some(t) => format!("{t:.1}\u{00b0}"),
         None => "N/A".into(),
@@ -468,6 +654,10 @@ pub fn compute_bounding_boxes(
         (ElementId::Ram, &ram_str),
         (ElementId::GpuTempLabel, "GPU TEMP"),
         (ElementId::GpuTempValue, &gpu_temp_str),
+        (ElementId::GpuLoad, &gpu_load_str),
+        (ElementId::GpuVram, &vram_str),
+        (ElementId::Fps, &fps_str),
+        (ElementId::Frametime, &ft_str),
         (ElementId::NvmeLabel, "NVME"),
         (ElementId::NvmeValue, &nvme_temp_str),
         (ElementId::Time, &now.time_str),
@@ -491,6 +681,12 @@ pub fn compute_bounding_boxes(
                 boxes.push((DragTarget::Bar(*id), (b.x, b.y, b.width, b.height)));
             }
         }
+    }
+
+    // Frametime graph.
+    if config.frametime_graph.visible {
+        let g = &config.frametime_graph;
+        boxes.push((DragTarget::FrametimeGraph, (g.x, g.y, g.width, g.height)));
     }
 
     // Divider.
