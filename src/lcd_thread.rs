@@ -43,6 +43,7 @@ pub fn spawn(
         sys.refresh_cpu_usage();
         thread::sleep(Duration::from_millis(500));
 
+        let mut gpu_state = sensor::GpuSensorState::default();
         let mut device: Option<hid::HidDevice> = None;
         let mut first_frame = true;
 
@@ -57,10 +58,16 @@ pub fn spawn(
         let mut last_gif_path = cfg.gif.path.clone();
 
         while !shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+            // Sync FPS file path from config.
+            {
+                let cfg = config.read().unwrap();
+                gpu_state.fps_file_path = cfg.fps_file_path.clone();
+            }
+
             // Read sensors.
             sys.refresh_cpu_usage();
             sys.refresh_memory();
-            let sensor_data = sensor::read_sensors(&mut sys);
+            let sensor_data = sensor::read_sensors(&mut sys, &mut gpu_state);
 
             // Update shared state for GUI preview.
             {

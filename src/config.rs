@@ -13,6 +13,10 @@ pub enum ElementId {
     Ram,
     GpuTempLabel,
     GpuTempValue,
+    GpuLoad,
+    GpuVram,
+    Fps,
+    Frametime,
     NvmeLabel,
     NvmeValue,
     Time,
@@ -29,6 +33,10 @@ impl ElementId {
             ElementId::Ram,
             ElementId::GpuTempLabel,
             ElementId::GpuTempValue,
+            ElementId::GpuLoad,
+            ElementId::GpuVram,
+            ElementId::Fps,
+            ElementId::Frametime,
             ElementId::NvmeLabel,
             ElementId::NvmeValue,
             ElementId::Time,
@@ -45,6 +53,10 @@ impl ElementId {
             ElementId::Ram => "RAM Usage",
             ElementId::GpuTempLabel => "GPU Temp Label",
             ElementId::GpuTempValue => "GPU Temp Value",
+            ElementId::GpuLoad => "GPU Load",
+            ElementId::GpuVram => "VRAM Usage",
+            ElementId::Fps => "FPS",
+            ElementId::Frametime => "Frametime",
             ElementId::NvmeLabel => "NVMe Label",
             ElementId::NvmeValue => "NVMe Value",
             ElementId::Time => "Time",
@@ -66,17 +78,21 @@ impl ElementId {
 pub enum BarId {
     CpuLoad,
     Ram,
+    GpuLoad,
+    GpuVram,
 }
 
 impl BarId {
     pub fn all() -> &'static [BarId] {
-        &[BarId::CpuLoad, BarId::Ram]
+        &[BarId::CpuLoad, BarId::Ram, BarId::GpuLoad, BarId::GpuVram]
     }
 
     pub fn display_name(&self) -> &'static str {
         match self {
             BarId::CpuLoad => "CPU Load Bar",
             BarId::Ram => "RAM Bar",
+            BarId::GpuLoad => "GPU Load Bar",
+            BarId::GpuVram => "VRAM Bar",
         }
     }
 }
@@ -101,6 +117,7 @@ pub enum DragTarget {
     Bar(BarId),
     Divider,
     Gif,
+    FrametimeGraph,
 }
 
 /// Element configuration.
@@ -137,6 +154,26 @@ pub struct BarConfig {
     pub fill_color: [u8; 3],
     pub bg_color: [u8; 3],
     pub border_color: [u8; 3],
+}
+
+/// Frametime graph configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FrametimeGraphConfig {
+    pub visible: bool,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub line_color: [u8; 3],
+    pub bg_color: [u8; 3],
+    pub border_color: [u8; 3],
+    /// Y-axis max in ms (0 = auto-scale from data).
+    #[serde(default = "default_graph_max_ms")]
+    pub max_ms: f32,
+}
+
+fn default_graph_max_ms() -> f32 {
+    0.0
 }
 
 /// Divider configuration.
@@ -177,6 +214,24 @@ fn default_gif() -> GifConfig {
     }
 }
 
+fn default_fps_file_path() -> String {
+    "/tmp/tt-rc-pro-fps".into()
+}
+
+fn default_frametime_graph() -> FrametimeGraphConfig {
+    FrametimeGraphConfig {
+        visible: false,
+        x: 248,
+        y: 112,
+        width: 222,
+        height: 14,
+        line_color: [0x44, 0x88, 0xff],
+        bg_color: [0x1a, 0x1a, 0x1a],
+        border_color: [0x33, 0x33, 0x33],
+        max_ms: 0.0,
+    }
+}
+
 /// Top-level configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
@@ -198,6 +253,12 @@ pub struct Config {
     pub update_interval_secs: u64,
     #[serde(default = "default_jpeg_quality")]
     pub jpeg_quality: u8,
+    /// Path to the external file providing FPS/frametime data.
+    #[serde(default = "default_fps_file_path")]
+    pub fps_file_path: String,
+    /// Frametime line graph settings.
+    #[serde(default = "default_frametime_graph")]
+    pub frametime_graph: FrametimeGraphConfig,
 }
 
 fn default_font_bold() -> String {
@@ -271,7 +332,7 @@ fn default_elements() -> HashMap<ElementId, ElementConfig> {
             use_dynamic_color: false,
         },
     );
-    // Right panel: GPU + NVMe + Time.
+    // Right panel: GPU.
     m.insert(
         ElementId::GpuTempLabel,
         ElementConfig {
@@ -296,6 +357,58 @@ fn default_elements() -> HashMap<ElementId, ElementConfig> {
             font_weight: FontWeight::Bold,
             color: [0x44, 0xff, 0x88],
             use_dynamic_color: true,
+        },
+    );
+    m.insert(
+        ElementId::GpuLoad,
+        ElementConfig {
+            visible: false,
+            x: 248,
+            y: 58,
+            font_size: 16.0,
+            font_path: None,
+            font_weight: FontWeight::Regular,
+            color: [0xaa, 0xaa, 0xaa],
+            use_dynamic_color: false,
+        },
+    );
+    m.insert(
+        ElementId::GpuVram,
+        ElementConfig {
+            visible: false,
+            x: 248,
+            y: 78,
+            font_size: 16.0,
+            font_path: None,
+            font_weight: FontWeight::Regular,
+            color: [0xaa, 0xaa, 0xaa],
+            use_dynamic_color: false,
+        },
+    );
+    m.insert(
+        ElementId::Fps,
+        ElementConfig {
+            visible: false,
+            x: 248,
+            y: 96,
+            font_size: 13.0,
+            font_path: None,
+            font_weight: FontWeight::Regular,
+            color: [0x88, 0xcc, 0x88],
+            use_dynamic_color: false,
+        },
+    );
+    m.insert(
+        ElementId::Frametime,
+        ElementConfig {
+            visible: false,
+            x: 340,
+            y: 96,
+            font_size: 13.0,
+            font_path: None,
+            font_weight: FontWeight::Regular,
+            color: [0x88, 0x88, 0xcc],
+            use_dynamic_color: false,
         },
     );
     m.insert(
@@ -381,6 +494,32 @@ fn default_bars() -> HashMap<BarId, BarConfig> {
             border_color: [0x33, 0x33, 0x33],
         },
     );
+    m.insert(
+        BarId::GpuLoad,
+        BarConfig {
+            visible: false,
+            x: 248,
+            y: 74,
+            width: 222,
+            height: 10,
+            fill_color: [0xff, 0x88, 0x33],
+            bg_color: [0x1a, 0x1a, 0x1a],
+            border_color: [0x33, 0x33, 0x33],
+        },
+    );
+    m.insert(
+        BarId::GpuVram,
+        BarConfig {
+            visible: false,
+            x: 248,
+            y: 94,
+            width: 222,
+            height: 10,
+            fill_color: [0xcc, 0x44, 0x88],
+            bg_color: [0x1a, 0x1a, 0x1a],
+            border_color: [0x33, 0x33, 0x33],
+        },
+    );
     m
 }
 
@@ -406,6 +545,8 @@ impl Default for Config {
             default_font_regular: default_font_regular(),
             update_interval_secs: default_interval(),
             jpeg_quality: default_jpeg_quality(),
+            fps_file_path: default_fps_file_path(),
+            frametime_graph: default_frametime_graph(),
         }
     }
 }
@@ -487,6 +628,7 @@ impl Config {
             }
             DragTarget::Divider => (self.divider.x, self.divider.y_start),
             DragTarget::Gif => (self.gif.x, self.gif.y),
+            DragTarget::FrametimeGraph => (self.frametime_graph.x, self.frametime_graph.y),
         }
     }
 
@@ -512,6 +654,10 @@ impl Config {
             DragTarget::Gif => {
                 self.gif.x = x;
                 self.gif.y = y;
+            }
+            DragTarget::FrametimeGraph => {
+                self.frametime_graph.x = x;
+                self.frametime_graph.y = y;
             }
         }
     }

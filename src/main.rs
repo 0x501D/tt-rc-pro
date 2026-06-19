@@ -144,6 +144,7 @@ fn run_daemon(mut config: config::Config) -> Result<()> {
     sys.refresh_cpu_usage();
     thread::sleep(Duration::from_millis(500));
 
+    let mut gpu_state = sensor::GpuSensorState::default();
     let mut device: Option<hid::HidDevice> = None;
     let mut first_frame = true;
     let mut consecutive_errors: u32 = 0;
@@ -165,6 +166,8 @@ fn run_daemon(mut config: config::Config) -> Result<()> {
                             .and_then(|p| gif::GifAnimation::load(p).ok());
                         last_gif_path = loaded.gif.path.clone();
                     }
+                    // Sync FPS file path.
+                    gpu_state.fps_file_path = loaded.fps_file_path.clone();
                     config = loaded;
                     font_cache.reload_defaults(&config);
                     println!("Config reloaded from {}", config_path.display());
@@ -177,6 +180,7 @@ fn run_daemon(mut config: config::Config) -> Result<()> {
             &mut device,
             &mut first_frame,
             &mut sys,
+            &mut gpu_state,
             &config,
             &mut font_cache,
             gif.as_ref(),
@@ -212,6 +216,7 @@ fn daemon_step(
     device: &mut Option<hid::HidDevice>,
     first_frame: &mut bool,
     sys: &mut System,
+    gpu_state: &mut sensor::GpuSensorState,
     config: &config::Config,
     font_cache: &mut render::FontCache,
     gif: Option<&gif::GifAnimation>,
@@ -230,7 +235,7 @@ fn daemon_step(
     // Encode JPEG BEFORE any protocol commands (timing-critical after CMD_1D).
     sys.refresh_cpu_usage();
     sys.refresh_memory();
-    let sensors = sensor::read_sensors(sys);
+    let sensors = sensor::read_sensors(sys, gpu_state);
     let jpeg = render::make_frame(&sensors, config, font_cache, gif);
 
     // Send to display.
@@ -245,7 +250,7 @@ fn daemon_step(
 
     // Status line.
     print!(
-        "\r  CPU {}°  GPU {}°  load {:.0}%   ",
+        "\r  CPU {}°  GPU {}°  load {:.0}%  GPU {}  FPS {}   ",
         sensors
             .cpu_temp
             .map(|t| format!("{t:.1}"))
@@ -255,6 +260,14 @@ fn daemon_step(
             .map(|t| format!("{t:.1}"))
             .unwrap_or_else(|| "N/A".into()),
         sensors.cpu_pct,
+        sensors
+            .gpu_load_pct
+            .map(|p| format!("{p:.0}%"))
+            .unwrap_or_else(|| "N/A".into()),
+        sensors
+            .fps
+            .map(|f| format!("{f:.0}"))
+            .unwrap_or_else(|| "--".into()),
     );
     std::io::stdout().flush()?;
 

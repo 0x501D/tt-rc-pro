@@ -199,10 +199,16 @@ impl eframe::App for TtRcApp {
                 ui.separator();
                 let d = &state.last_sensor_data;
                 ui.label(format!(
-                    "CPU {:.1}°  GPU {:.1}°  Load {:.0}%",
+                    "CPU {:.1}°  GPU {:.1}°  Load {:.0}%  GPU {}  FPS {}",
                     d.cpu_temp.unwrap_or(0.0),
                     d.gpu_temp.unwrap_or(0.0),
                     d.cpu_pct,
+                    d.gpu_load_pct
+                        .map(|p| format!("{p:.0}%"))
+                        .unwrap_or_else(|| "N/A".into()),
+                    d.fps
+                        .map(|f| format!("{f:.0}"))
+                        .unwrap_or_else(|| "--".into()),
                 ));
                 ui.separator();
                 let interval = self.config.read().unwrap().update_interval_secs;
@@ -428,6 +434,21 @@ impl TtRcApp {
             }
         }
 
+        // Frametime Graph.
+        {
+            let mut cfg = self.config.write().unwrap();
+            let mut visible = cfg.frametime_graph.visible;
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut visible, "Frametime Graph");
+                if ui.small_button("☰").on_hover_text("Select").clicked() {
+                    self.selected = Some(DragTarget::FrametimeGraph);
+                }
+            });
+            if cfg.frametime_graph.visible != visible {
+                cfg.frametime_graph.visible = visible;
+            }
+        }
+
         ui.separator();
 
         // Selected element detail.
@@ -481,6 +502,7 @@ impl TtRcApp {
             DragTarget::Bar(id) => self.draw_bar_detail(ui, *id),
             DragTarget::Divider => self.draw_divider_detail(ui),
             DragTarget::Gif => self.draw_gif_detail(ui),
+            DragTarget::FrametimeGraph => self.draw_frametime_graph_detail(ui),
         }
     }
 
@@ -601,6 +623,58 @@ impl TtRcApp {
             let mut c = color8_to_color32(bar.border_color);
             if color_picker::color_picker_color32(ui, &mut c, Alpha::Opaque) {
                 bar.border_color = color32_to_color8(c);
+            }
+        });
+    }
+
+    fn draw_frametime_graph_detail(&mut self, ui: &mut Ui) {
+        ui.heading("Frametime Graph Properties");
+
+        let mut cfg = self.config.write().unwrap();
+        let g = &mut cfg.frametime_graph;
+
+        // Position.
+        ui.horizontal(|ui| {
+            ui.label("X:");
+            ui.add(DragValue::new(&mut g.x).range(0..=W as i32 - 1).speed(1));
+            ui.label("Y:");
+            ui.add(DragValue::new(&mut g.y).range(0..=H as i32 - 1).speed(1));
+        });
+
+        // Dimensions.
+        ui.horizontal(|ui| {
+            ui.label("Width:");
+            ui.add(DragValue::new(&mut g.width).range(20..=W).speed(1));
+            ui.label("Height:");
+            ui.add(DragValue::new(&mut g.height).range(8..=40).speed(1));
+        });
+
+        // Max ms (0 = auto).
+        ui.horizontal(|ui| {
+            ui.label("Max ms (0=auto):");
+            ui.add(DragValue::new(&mut g.max_ms).range(0.0..=200.0).speed(1.0));
+        });
+
+        // Colors.
+        ui.horizontal(|ui| {
+            ui.label("Line:");
+            let mut c = color8_to_color32(g.line_color);
+            if color_picker::color_picker_color32(ui, &mut c, Alpha::Opaque) {
+                g.line_color = color32_to_color8(c);
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Background:");
+            let mut c = color8_to_color32(g.bg_color);
+            if color_picker::color_picker_color32(ui, &mut c, Alpha::Opaque) {
+                g.bg_color = color32_to_color8(c);
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Border:");
+            let mut c = color8_to_color32(g.border_color);
+            if color_picker::color_picker_color32(ui, &mut c, Alpha::Opaque) {
+                g.border_color = color32_to_color8(c);
             }
         });
     }
@@ -747,6 +821,19 @@ impl TtRcApp {
             if response.changed() {
                 self.font_cache
                     .reload_defaults(&*self.config.read().unwrap());
+            }
+        });
+
+        // FPS file path.
+        ui.horizontal(|ui| {
+            ui.label("FPS File:");
+            let response = ui.add(
+                TextEdit::singleline(&mut cfg.fps_file_path)
+                    .hint_text("/tmp/tt-rc-pro-fps")
+                    .desired_width(200.0),
+            );
+            if response.changed() {
+                // Path change is picked up on next sensor read cycle.
             }
         });
 
