@@ -65,9 +65,11 @@ pub fn spawn(
             }
 
             // Read sensors.
-            sys.refresh_cpu_usage();
-            sys.refresh_memory();
-            let sensor_data = sensor::read_sensors(&mut sys, &mut gpu_state);
+            let needs = {
+                let cfg = config.read().unwrap();
+                cfg.sensor_needs()
+            };
+            let sensor_data = sensor::read_sensors(&mut sys, &mut gpu_state, &needs);
 
             // Update shared state for GUI preview.
             {

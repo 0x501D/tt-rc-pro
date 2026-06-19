@@ -4,6 +4,8 @@ use std::sync::OnceLock;
 
 use sysinfo::System;
 
+use crate::config::SensorNeeds;
+
 /// Sensor data for frame rendering.
 #[derive(Debug, Clone, Default)]
 pub struct SensorData {
@@ -173,44 +175,63 @@ fn read_fps_file(path: &str) -> (Option<f32>, Option<f32>) {
 
 /// Read all sensor data: temperatures from /sys/class/hwmon, CPU/RAM from sysinfo,
 /// GPU load/VRAM from AMD sysfs, FPS/frametime from external file.
-pub fn read_sensors(sys: &mut System, gpu_state: &mut GpuSensorState) -> SensorData {
-    let (cpu_temp, gpu_temp, nvme_temp) = read_hwmon_temps();
+/// Only reads sensors whose corresponding UI elements are visible (per `needs`).
+pub fn read_sensors(sys: &mut System, gpu_state: &mut GpuSensorState, needs: &SensorNeeds) -> SensorData {
+    let (cpu_temp, gpu_temp, nvme_temp) = read_hwmon_temps(needs);
 
-    sys.refresh_cpu_usage();
-    let cpu_pct = sys.global_cpu_usage();
-
-    sys.refresh_memory();
-    let ram_total = sys.total_memory() as f64 / 1_073_741_824.0; // bytes → GB
-    let ram_used = sys.used_memory() as f64 / 1_073_741_824.0;
-    let ram_pct = if ram_total > 0.0 {
-        (ram_used / ram_total * 100.0) as f32
+    let cpu_pct = if needs.cpu_load {
+        sys.refresh_cpu_usage();
+        sys.global_cpu_usage()
     } else {
         0.0
+    };
+
+    let (ram_used_gb, ram_total_gb, ram_pct) = if needs.ram {
+        sys.refresh_memory();
+        let total = sys.total_memory() as f64 / 1_073_741_824.0;
+        let used = sys.used_memory() as f64 / 1_073_741_824.0;
+        let pct = if total > 0.0 {
+            (used / total * 100.0) as f32
+        } else {
+            0.0
+        };
+        (used, total, pct)
+    } else {
+        (0.0, 0.0, 0.0)
     };
 
     // GPU Load and VRAM (AMD only)
     let (gpu_load_pct, vram_used_gb, vram_total_gb, vram_pct) =
         if let Some(pci_path) = detect_amd_pci_path() {
-            let load = read_gpu_load(&pci_path);
-            let (used, total, pct) = read_vram(&pci_path);
+            let load = if needs.gpu_load { read_gpu_load(&pci_path) } else { None };
+            let (used, total, pct) = if needs.vram {
+                read_vram(&pci_path)
+            } else {
+                (0.0, 0.0, 0.0)
+            };
             (load, used, total, pct)
         } else {
             (None, 0.0, 0.0, 0.0)
         };
 
     // FPS and frametime from external file
-    let (fps, frametime_ms) = read_fps_file(&gpu_state.fps_file_path);
-    if let Some(ft) = frametime_ms {
-        gpu_state.push_frametime(ft);
-    }
+    let (fps, frametime_ms) = if needs.fps {
+        let (fps, ft) = read_fps_file(&gpu_state.fps_file_path);
+        if let Some(ft_val) = ft {
+            gpu_state.push_frametime(ft_val);
+        }
+        (fps, ft)
+    } else {
+        (None, None)
+    };
 
     SensorData {
         cpu_temp,
         gpu_temp,
         nvme_temp,
         cpu_pct,
-        ram_used_gb: ram_used,
-        ram_total_gb: ram_total,
+        ram_used_gb,
+        ram_total_gb,
         ram_pct,
         gpu_load_pct,
         vram_used_gb,
@@ -218,16 +239,25 @@ pub fn read_sensors(sys: &mut System, gpu_state: &mut GpuSensorState) -> SensorD
         vram_pct,
         fps,
         frametime_ms,
-        frametime_history: gpu_state.frametime_history.clone(),
+        frametime_history: if needs.fps {
+            gpu_state.frametime_history.clone()
+        } else {
+            Vec::new()
+        },
     }
 }
 
 /// Read CPU (k10temp/Tctl), GPU (amdgpu/edge with high==100), NVMe temperatures
-/// from /sys/class/hwmon.
-fn read_hwmon_temps() -> (Option<f32>, Option<f32>, Option<f32>) {
+/// from /sys/class/hwmon. Skips device types not needed per `needs`.
+fn read_hwmon_temps(needs: &SensorNeeds) -> (Option<f32>, Option<f32>, Option<f32>) {
     let mut cpu_temp = None;
     let mut gpu_temp = None;
     let mut nvme_temp = None;
+
+    // Early return if no temperatures are needed at all.
+    if !needs.cpu_temp && !needs.gpu_temp && !needs.nvme_temp {
+        return (cpu_temp, gpu_temp, nvme_temp);
+    }
 
     let Ok(entries) = fs::read_dir("/sys/class/hwmon") else {
         return (cpu_temp, gpu_temp, nvme_temp);
@@ -239,11 +269,11 @@ fn read_hwmon_temps() -> (Option<f32>, Option<f32>, Option<f32>) {
             continue;
         };
         match name.trim() {
-            "k10temp" => cpu_temp = find_temp_by_label(&path, "Tctl"),
-            "amdgpu" => {
+            "k10temp" if needs.cpu_temp => cpu_temp = find_temp_by_label(&path, "Tctl"),
+            "amdgpu" if needs.gpu_temp => {
                 gpu_temp = find_temp_by_label(&path, "edge");
             }
-            "nvme" => nvme_temp = find_temp_by_label(&path, "Composite"),
+            "nvme" if needs.nvme_temp => nvme_temp = find_temp_by_label(&path, "Composite"),
             _ => {}
         }
     }

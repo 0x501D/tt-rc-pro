@@ -233,9 +233,8 @@ fn daemon_step(
     let dev = device.as_mut().unwrap();
 
     // Encode JPEG BEFORE any protocol commands (timing-critical after CMD_1D).
-    sys.refresh_cpu_usage();
-    sys.refresh_memory();
-    let sensors = sensor::read_sensors(sys, gpu_state);
+    let needs = config.sensor_needs();
+    let sensors = sensor::read_sensors(sys, gpu_state, &needs);
     let jpeg = render::make_frame(&sensors, config, font_cache, gif);
 
     // Send to display.
