@@ -533,6 +533,61 @@ fn default_divider() -> DividerConfig {
     }
 }
 
+/// Which sensor groups are actually needed for rendering.
+/// Derived from element/bar visibility so that hidden sensors are not read from disk.
+#[derive(Debug, Clone)]
+pub struct SensorNeeds {
+    pub cpu_temp: bool,
+    pub cpu_load: bool,
+    pub ram: bool,
+    pub gpu_temp: bool,
+    pub gpu_load: bool,
+    pub vram: bool,
+    pub nvme_temp: bool,
+    pub fps: bool,
+}
+
+impl SensorNeeds {
+    /// All needs enabled (used when config is unavailable).
+    #[allow(dead_code)]
+    pub fn all() -> Self {
+        SensorNeeds {
+            cpu_temp: true,
+            cpu_load: true,
+            ram: true,
+            gpu_temp: true,
+            gpu_load: true,
+            vram: true,
+            nvme_temp: true,
+            fps: true,
+        }
+    }
+
+    /// No needs enabled.
+    #[allow(dead_code)]
+    pub fn none() -> Self {
+        SensorNeeds {
+            cpu_temp: false,
+            cpu_load: false,
+            ram: false,
+            gpu_temp: false,
+            gpu_load: false,
+            vram: false,
+            nvme_temp: false,
+            fps: false,
+        }
+    }
+}
+
+/// Whether any element or bar with the given key is visible.
+fn is_visible_elem(elements: &HashMap<ElementId, ElementConfig>, id: ElementId) -> bool {
+    elements.get(&id).is_some_and(|e| e.visible)
+}
+
+fn is_visible_bar(bars: &HashMap<BarId, BarConfig>, id: BarId) -> bool {
+    bars.get(&id).is_some_and(|b| b.visible)
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -577,6 +632,26 @@ impl Config {
         let text = toml::to_string_pretty(self).context("Cannot serialize config")?;
         std::fs::write(&path, text).with_context(|| format!("Cannot write {}", path.display()))?;
         Ok(())
+    }
+
+    /// Compute which sensor groups are needed based on element/bar visibility.
+    pub fn sensor_needs(&self) -> SensorNeeds {
+        SensorNeeds {
+            cpu_temp: is_visible_elem(&self.elements, ElementId::CpuTempValue),
+            cpu_load: is_visible_elem(&self.elements, ElementId::CpuLoad)
+                || is_visible_bar(&self.bars, BarId::CpuLoad),
+            ram: is_visible_elem(&self.elements, ElementId::Ram)
+                || is_visible_bar(&self.bars, BarId::Ram),
+            gpu_temp: is_visible_elem(&self.elements, ElementId::GpuTempValue),
+            gpu_load: is_visible_elem(&self.elements, ElementId::GpuLoad)
+                || is_visible_bar(&self.bars, BarId::GpuLoad),
+            vram: is_visible_elem(&self.elements, ElementId::GpuVram)
+                || is_visible_bar(&self.bars, BarId::GpuVram),
+            nvme_temp: is_visible_elem(&self.elements, ElementId::NvmeValue),
+            fps: is_visible_elem(&self.elements, ElementId::Fps)
+                || is_visible_elem(&self.elements, ElementId::Frametime)
+                || self.frametime_graph.visible,
+        }
     }
 
     /// Resolve the effective font path for an element.
