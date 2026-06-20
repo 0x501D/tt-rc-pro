@@ -1,0 +1,10 @@
+#!/bin/bash
+# tt-fps -- launch a program with FPS/frametime tracking
+# Usage: tt-fps <command> [args...]
+#
+# Enables the Vulkan layer via TT_RC_PRO_FPS env var
+# and injects libttfps.so via LD_PRELOAD for GLX/EGL hooking.
+
+export TT_RC_PRO_FPS=1
+export LD_PRELOAD=libttfps.so${LD_PRELOAD:+:$LD_PRELOAD}
+exec "$@"

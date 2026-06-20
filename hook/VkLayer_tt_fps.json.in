@@ -1,0 +1,20 @@
+{
+    "file_format_version": "1.0.0",
+    "layer": {
+        "name": "VK_LAYER_tt_fps",
+        "type": "GLOBAL",
+        "library_path": "@LIBDIR@/libttfps.so",
+        "api_version": "1.3.0",
+        "implementation_version": "1",
+        "description": "tt-rc-pro FPS/frametime statistics layer",
+        "functions": {
+            "vkNegotiateLoaderLayerInterfaceVersion": "vkNegotiateLoaderLayerInterfaceVersion"
+        },
+        "enable_environment": {
+            "TT_RC_PRO_FPS": "1"
+        },
+        "disable_environment": {
+            "NO_TT_RC_PRO_FPS": "1"
+        }
+    }
+}

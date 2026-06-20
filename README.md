@@ -13,7 +13,7 @@ Generated with GLM-5.1 based on https://github.com/pcmx1/thermaltake-lcd-linux
 - **Dynamic colors** — temperature values shift green → yellow → red based on configurable thresholds
 - **Progress bars** — CPU load, RAM usage, GPU load, and VRAM usage bars with customizable fill/background/border colors
 - **GPU metrics** — GPU load and VRAM usage for AMD GPUs (sysfs + gpu_metrics binary)
-- **FPS & frametime** — reads FPS and frametime from an external file (e.g. MangoHud output), with a live frametime line graph
+- **FPS & frametime** — built-in `libttfps.so` hook library intercepts Vulkan/OpenGL/EGL calls; no MangoHud needed
 - **GIF overlay** — animated GIF composited on top of the frame with alpha blending
 - **Preview-only mode** — `--no-send` runs the GUI without needing the physical LCD
 
@@ -29,13 +29,24 @@ Generated with GLM-5.1 based on https://github.com/pcmx1/thermaltake-lcd-linux
 - Read/write access to `/dev/hidraw*` (add a udev rule or run as root)
 - DejaVu Sans fonts at `/usr/share/fonts/TTF` (configurable)
 - **For GPU metrics**: AMD GPU with `amdgpu` driver (reads from `/sys/class/drm/renderD*/device/`)
-- **For FPS/frametime**: an external data source writing to a file (see [FPS/frametime setup](#fps--frametime-setup))
+- **For FPS/frametime**: `libttfps.so` hook library (see [FPS & frametime setup](#fps--frametime-setup))
 
 ## Build
+
+### Main application
 
 ```bash
 cargo build --release
 ```
+
+### FPS/frametime hook library
+
+```bash
+cd hook
+make
+```
+
+Build dependencies: `gcc`, Vulkan headers (`vulkan/vulkan.h`, `vulkan/vk_layer.h` — typically from `vulkan-headers` package).
 
 ## Usage
 
@@ -190,7 +201,7 @@ visible = true
 
 ## FPS & frametime setup
 
-FPS and frametime data comes from an **external file** that another program writes to. The default path is `/tmp/tt-rc-pro-fps` (configurable via `fps_file_path`).
+FPS and frametime data is collected by **`libttfps.so`** — a lightweight shared library that hooks into graphics API calls (Vulkan, OpenGL/GLX, EGL) and writes the current FPS and frametime to a file. The default file path is `/tmp/tt-rc-pro-fps` (configurable via `fps_file_path` in config and `TT_RC_PRO_FPS_FILE` env var for the hook).
 
 ### File format
 
@@ -200,27 +211,77 @@ A single line with two space-separated values: `fps frametime_ms`
 144 6.94
 ```
 
-### Using with MangoHud
-
-MangoHud can output metrics to a log file. Create a small script that tails the log and writes the latest values:
+### Installing the hook library
 
 ```bash
-#!/bin/bash
-# mango-to-ttrc.sh — pipe MangoHud output to tt-rc-pro
-MANGO_LOG="/tmp/mangohud.log"
-FPS_FILE="/tmp/tt-rc-pro-fps"
-
-tail -F "$MANGO_LOG" | while read -r line; do
-    # Extract FPS and frametime from MangoHud log format
-    fps=$(echo "$line" | grep -oP 'fps=\K[0-9.]+')
-    ft=$(echo "$line" | grep -oP 'frametime=\K[0-9.]+')
-    if [ -n "$fps" ] && [ -n "$ft" ]; then
-        echo "$fps $ft" > "$FPS_FILE"
-    fi
-done
+cd hook
+make
+sudo make install LIBDIR=/usr/lib
 ```
 
+This installs:
+- `libttfps.so` → `/usr/lib/`
+- `VkLayer_tt_fps.json` → `/usr/share/vulkan/implicit_layer.d/`
+- `tt-fps` wrapper script → `/usr/local/bin/`
+
+### Usage
+
+**Recommended — using the wrapper script:**
+
+```bash
+tt-fps your_game
+```
+
+**Manual — enabling all hooks:**
+
+```bash
+TT_RC_PRO_FPS=1 LD_PRELOAD=libttfps.so your_game
+```
+
+**Vulkan only** (no `LD_PRELOAD` needed — the implicit layer activates automatically when `TT_RC_PRO_FPS=1` is set):
+
+```bash
+TT_RC_PRO_FPS=1 your_game
+```
+
+**OpenGL/GLX only:**
+
+```bash
+LD_PRELOAD=libttfps.so your_game
+```
+
+**Custom output file:**
+
+```bash
+TT_RC_PRO_FPS_FILE=/run/user/$(id -u)/tt-rc-pro-fps tt-fps your_game
+```
+
+**Disable the hook** (if installed as implicit Vulkan layer):
+
+```bash
+NO_TT_RC_PRO_FPS=1 your_game
+```
+
+### How it works
+
+`libttfps.so` intercepts frame presentation calls at three points:
+
+| API | Hook | Mechanism |
+|---|---|---|
+| Vulkan | `vkQueuePresentKHR` | Vulkan implicit layer (JSON manifest) |
+| OpenGL/GLX | `glXSwapBuffers` | LD_PRELOAD symbol override |
+| EGL | `eglSwapBuffers` + `eglGetProcAddress` | LD_PRELOAD symbol override |
+
+On each present/swap call, it measures the time since the last frame using `clock_gettime(CLOCK_MONOTONIC_RAW)`, computes:
+
+- **Frametime** — instantaneous delta between consecutive presents (ms)
+- **FPS** — windowed average over 500ms: `1e9 × frame_count / elapsed_ns`
+
+The FPS/frametime values are written to the output file atomically (write to temp + rename) every 500ms, ensuring the reader never sees partial data.
+
 ### Using with a custom script
+
+The file format is simple enough to generate from any source:
 
 ```bash
 # Simple test: write static FPS/frametime
@@ -235,6 +296,7 @@ echo "60 16.67" > /tmp/tt-rc-pro-fps
 | GUI | eframe 0.31 + egui 0.31 |
 | Image rendering | image 0.25 + imageproc 0.25 + ab_glyph 0.2 |
 | System sensors | sysinfo 0.33 + `/sys/class/hwmon` + `/sys/class/drm` |
+| FPS/frametime hook | C — `libttfps.so` (Vulkan layer + LD_PRELOAD) |
 | USB/HID | libc 0.2 (ioctl) + `/dev/hidraw*` |
 | Config | serde + toml |
 | CLI | clap 4 |
@@ -250,8 +312,8 @@ echo "60 16.67" > /tmp/tt-rc-pro-fps
 | RAM usage | `sysinfo` crate | |
 | GPU load | `amdgpu` → `gpu_busy_percent` or `gpu_metrics` binary | AMD only |
 | VRAM usage | `amdgpu` → `mem_info_vram_total` / `mem_info_vram_used` | AMD only |
-| FPS | External file (`fps_file_path`) | Requires external data source |
-| Frametime | External file (`fps_file_path`) | Requires external data source |
+| FPS | `libttfps.so` hook (Vulkan/GLX/EGL) | Windowed average over 500ms |
+| Frametime | `libttfps.so` hook (Vulkan/GLX/EGL) | Instantaneous per-frame delta |
 
 ## USB HID protocol
 

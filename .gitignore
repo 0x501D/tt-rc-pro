@@ -1,1 +1,4 @@
 /target
+/hook/*.o
+/hook/libttfps.so
+/hook/VkLayer_tt_fps.json
