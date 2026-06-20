@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 /* Global state */
 static tt_fps_state g_state;
@@ -66,6 +67,11 @@ void tt_fps_on_present(int64_t now_ns)
     tt_fps_state *st = tt_fps_global();
     pthread_mutex_lock(&st->lock);
 
+    if (!st->initialized) {
+        pthread_mutex_unlock(&st->lock);
+        return;
+    }
+
     /* First frame: just record the timestamp, no frametime */
     if (st->last_present_ns == 0) {
         st->last_present_ns = now_ns;
@@ -86,7 +92,7 @@ void tt_fps_on_present(int64_t now_ns)
     /* Check if the FPS window has elapsed */
     int64_t elapsed_ns = now_ns - st->window_start_ns;
     if (elapsed_ns >= TT_FPS_WINDOW_NS) {
-        /* FPS = frames / time (like MangoHud) */
+        /* FPS = frames / time */
         st->fps = (float)(1e9 * (double)st->frame_count / (double)elapsed_ns);
 
         /* Reset window */
@@ -98,4 +104,28 @@ void tt_fps_on_present(int64_t now_ns)
     }
 
     pthread_mutex_unlock(&st->lock);
+}
+
+void tt_fps_cleanup(void)
+{
+    tt_fps_state *st = tt_fps_global();
+    pthread_mutex_lock(&st->lock);
+
+    if (st->filepath[0]) {
+        unlink(st->filepath);
+        /* Also remove temp file if an atomic write was interrupted */
+        char tmp_path[520];
+        snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", st->filepath);
+        unlink(tmp_path);
+    }
+
+    st->initialized = 0;
+    pthread_mutex_unlock(&st->lock);
+}
+
+/* Called when libttfps.so is unloaded (process exit / dlclose) */
+__attribute__((destructor))
+static void tt_fps_fini(void)
+{
+    tt_fps_cleanup();
 }

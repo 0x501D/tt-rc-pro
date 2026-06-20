@@ -167,13 +167,13 @@ pub struct FrametimeGraphConfig {
     pub line_color: [u8; 3],
     pub bg_color: [u8; 3],
     pub border_color: [u8; 3],
-    /// Y-axis max in ms (0 = auto-scale from data).
+    /// Y-axis max in ms (0 = auto-scale with headroom).
     #[serde(default = "default_graph_max_ms")]
     pub max_ms: f32,
 }
 
 fn default_graph_max_ms() -> f32 {
-    0.0
+    50.0
 }
 
 /// Divider configuration.

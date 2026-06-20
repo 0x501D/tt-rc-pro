@@ -1,3 +1,4 @@
+use crate::sensor::FRAMETIME_SLOTS;
 use std::collections::HashMap;
 
 use ab_glyph::{Font as AbFont, FontArc, PxScale, ScaleFont};
@@ -97,6 +98,8 @@ fn draw_bar(
 }
 
 /// Draw a line graph within the given rectangle.
+/// `total_slots` is the fixed number of sample positions.
+/// Data is right-aligned: newest sample at the right edge, old data scrolls left.
 fn draw_line_graph(
     img: &mut RgbImage,
     x: i32,
@@ -105,6 +108,7 @@ fn draw_line_graph(
     h: u32,
     data: &[f32],
     max_val: f32,
+    total_slots: usize,
     line_color: Rgb<u8>,
     bg_color: Rgb<u8>,
     border_color: Rgb<u8>,
@@ -113,24 +117,32 @@ fn draw_line_graph(
     draw_filled_rect_mut(img, Rect::at(x, y).of_size(w, h), bg_color);
 
     if data.len() >= 2 {
-        // Auto-scale Y axis if max_val is 0.
+        // Fixed scale (max_val > 0): clamp values at that ceiling.
+        // Auto-scale (max_val == 0): compute data max with 25% headroom
+        // so the line doesn't hug the top edge.
         let effective_max = if max_val > 0.0 {
             max_val
         } else {
-            data.iter()
+            let data_max = data
+                .iter()
                 .cloned()
                 .fold(f32::NEG_INFINITY, f32::max)
-                .max(1.0)
+                .max(1.0);
+            (data_max * 1.25).ceil()
         };
 
         let inner_w = w as f32;
         let inner_h = h as f32;
-        let n = data.len();
-        let step = inner_w / (n - 1).max(1) as f32;
+        let step = inner_w / (total_slots - 1).max(1) as f32;
 
-        for i in 0..(n - 1) {
-            let x0 = x as f32 + i as f32 * step;
-            let x1 = x as f32 + (i + 1) as f32 * step;
+        // Offset so data is right-aligned within total_slots.
+        let offset = total_slots.saturating_sub(data.len());
+
+        for i in 0..(data.len() - 1) {
+            let slot0 = offset + i;
+            let slot1 = offset + i + 1;
+            let x0 = x as f32 + slot0 as f32 * step;
+            let x1 = x as f32 + slot1 as f32 * step;
             let y0 = y as f32 + inner_h - (data[i].min(effective_max) / effective_max * inner_h);
             let y1 =
                 y as f32 + inner_h - (data[i + 1].min(effective_max) / effective_max * inner_h);
@@ -520,6 +532,7 @@ pub fn render_frame(
             g.height,
             &data.frametime_history,
             g.max_ms,
+            FRAMETIME_SLOTS,
             Rgb(g.line_color),
             Rgb(g.bg_color),
             Rgb(g.border_color),

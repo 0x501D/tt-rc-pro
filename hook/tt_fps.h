@@ -46,4 +46,7 @@ int64_t tt_get_nano(void);
 /* Write the fps/frametime line to the output file. */
 void tt_fps_write_file(tt_fps_state *st);
 
+/* Remove the output file and mark state as cleaned up. */
+void tt_fps_cleanup(void);
+
 #endif /* TT_FPS_H */

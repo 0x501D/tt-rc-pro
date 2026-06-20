@@ -27,6 +27,9 @@ pub struct SensorData {
     pub frametime_history: Vec<f32>,
 }
 
+/// Fixed number of sample slots for the frametime graph.
+pub const FRAMETIME_SLOTS: usize = 200;
+
 /// Persistent state for GPU sensor readings across `read_sensors()` calls.
 #[derive(Debug)]
 pub struct GpuSensorState {
@@ -38,9 +41,9 @@ pub struct GpuSensorState {
 impl Default for GpuSensorState {
     fn default() -> Self {
         GpuSensorState {
-            frametime_history: Vec::with_capacity(200),
+            frametime_history: Vec::with_capacity(FRAMETIME_SLOTS),
             fps_file_path: String::from("/tmp/tt-rc-pro-fps"),
-            max_history: 200,
+            max_history: FRAMETIME_SLOTS,
         }
     }
 }
@@ -176,7 +179,11 @@ fn read_fps_file(path: &str) -> (Option<f32>, Option<f32>) {
 /// Read all sensor data: temperatures from /sys/class/hwmon, CPU/RAM from sysinfo,
 /// GPU load/VRAM from AMD sysfs, FPS/frametime from external file.
 /// Only reads sensors whose corresponding UI elements are visible (per `needs`).
-pub fn read_sensors(sys: &mut System, gpu_state: &mut GpuSensorState, needs: &SensorNeeds) -> SensorData {
+pub fn read_sensors(
+    sys: &mut System,
+    gpu_state: &mut GpuSensorState,
+    needs: &SensorNeeds,
+) -> SensorData {
     let (cpu_temp, gpu_temp, nvme_temp) = read_hwmon_temps(needs);
 
     let cpu_pct = if needs.cpu_load {
@@ -203,7 +210,11 @@ pub fn read_sensors(sys: &mut System, gpu_state: &mut GpuSensorState, needs: &Se
     // GPU Load and VRAM (AMD only)
     let (gpu_load_pct, vram_used_gb, vram_total_gb, vram_pct) =
         if let Some(pci_path) = detect_amd_pci_path() {
-            let load = if needs.gpu_load { read_gpu_load(&pci_path) } else { None };
+            let load = if needs.gpu_load {
+                read_gpu_load(&pci_path)
+            } else {
+                None
+            };
             let (used, total, pct) = if needs.vram {
                 read_vram(&pci_path)
             } else {
@@ -219,6 +230,9 @@ pub fn read_sensors(sys: &mut System, gpu_state: &mut GpuSensorState, needs: &Se
         let (fps, ft) = read_fps_file(&gpu_state.fps_file_path);
         if let Some(ft_val) = ft {
             gpu_state.push_frametime(ft_val);
+        } else {
+            // Data source gone — clear history so the graph disappears
+            gpu_state.frametime_history.clear();
         }
         (fps, ft)
     } else {
