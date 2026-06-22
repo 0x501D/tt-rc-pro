@@ -10,7 +10,7 @@
 #define VK_LAYER_EXPORT __attribute__((__visibility__("default")))
 #endif
 
-/* ---- Dispatch table storage ---- */
+/* Dispatch table storage */
 
 typedef struct {
     PFN_vkGetInstanceProcAddr next_gipa;
@@ -39,7 +39,7 @@ static InstanceNode *g_instances = NULL;
 static DeviceNode   *g_devices   = NULL;
 static pthread_mutex_t g_vulkan_lock = PTHREAD_MUTEX_INITIALIZER;
 
-/* ---- Lookup helpers ---- */
+/* Lookup helpers  */
 
 static InstanceData *find_instance(VkInstance inst)
 {
@@ -57,8 +57,7 @@ static DeviceData *find_device(VkDevice dev)
     return NULL;
 }
 
-/* ---- Interceptor: vkQueuePresentKHR ---- */
-
+/* Interceptor: vkQueuePresentKHR */
 static VKAPI_ATTR VkResult VKAPI_CALL
 hook_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *pPresentInfo)
 {
@@ -83,8 +82,7 @@ hook_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *pPresentInfo)
     return VK_ERROR_DEVICE_LOST;
 }
 
-/* ---- Interceptor: vkCreateInstance ---- */
-
+/* Interceptor: vkCreateInstance */
 static VKAPI_ATTR VkResult VKAPI_CALL
 hook_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
                     const VkAllocationCallbacks *pAllocator,
@@ -140,8 +138,7 @@ hook_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     return VK_SUCCESS;
 }
 
-/* ---- Interceptor: vkDestroyInstance ---- */
-
+/* Interceptor: vkDestroyInstance */
 static VKAPI_ATTR void VKAPI_CALL
 hook_DestroyInstance(VkInstance instance, const VkAllocationCallbacks *pAllocator)
 {
@@ -164,8 +161,7 @@ hook_DestroyInstance(VkInstance instance, const VkAllocationCallbacks *pAllocato
     pthread_mutex_unlock(&g_vulkan_lock);
 }
 
-/* ---- Interceptor: vkCreateDevice ---- */
-
+/* Interceptor: vkCreateDevice */
 static VKAPI_ATTR VkResult VKAPI_CALL
 hook_CreateDevice(VkPhysicalDevice physicalDevice,
                   const VkDeviceCreateInfo *pCreateInfo,
@@ -222,8 +218,7 @@ hook_CreateDevice(VkPhysicalDevice physicalDevice,
     return VK_SUCCESS;
 }
 
-/* ---- Interceptor: vkDestroyDevice ---- */
-
+/* Interceptor: vkDestroyDevice */
 static VKAPI_ATTR void VKAPI_CALL
 hook_DestroyDevice(VkDevice device, const VkAllocationCallbacks *pAllocator)
 {
@@ -245,8 +240,7 @@ hook_DestroyDevice(VkDevice device, const VkAllocationCallbacks *pAllocator)
     pthread_mutex_unlock(&g_vulkan_lock);
 }
 
-/* ---- Layer GetInstanceProcAddr ---- */
-
+/* Layer GetInstanceProcAddr */
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 layer_GetInstanceProcAddr(VkInstance instance, const char *pName)
 {
@@ -267,8 +261,7 @@ layer_GetInstanceProcAddr(VkInstance instance, const char *pName)
     return NULL;
 }
 
-/* ---- Layer GetDeviceProcAddr ---- */
-
+/* Layer GetDeviceProcAddr */
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 layer_GetDeviceProcAddr(VkDevice device, const char *pName)
 {
@@ -287,8 +280,7 @@ layer_GetDeviceProcAddr(VkDevice device, const char *pName)
     return NULL;
 }
 
-/* ---- Layer interface negotiation (required entry point) ---- */
-
+/* Layer interface negotiation (required entry point) */
 VK_LAYER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL
 vkNegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface *pVersionStruct)
 {
